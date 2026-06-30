@@ -16,8 +16,11 @@ import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { determineSeason, getMonthName, determineZone } from '../../utils/contextHelper';
 
+import { API_ENDPOINTS } from '../../constants/Api';
+
 // Constants
-const BACKEND_URL = 'http://192.168.1.4:8000/ask';
+const BACKEND_URL = API_ENDPOINTS.ASK;
+
 
 // Types
 type Source = {

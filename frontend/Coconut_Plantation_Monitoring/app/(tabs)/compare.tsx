@@ -15,7 +15,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { determineSeason, getMonthName, determineZone } from '../../utils/contextHelper';
 
-const BACKEND_URL = 'http://192.168.1.4:8000/compare';
+import { API_ENDPOINTS } from '../../constants/Api';
+
+const BACKEND_URL = API_ENDPOINTS.COMPARE;
+
 
 type ComparisonResult = {
   plain_llm: { answer: string };

@@ -17,7 +17,7 @@ import logging
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_plain_answer
+from step2_rag_engine import load_rag_chain, get_answer, get_plain_answer, translate_text
 
 # Load environment variables
 load_dotenv()
@@ -112,17 +112,24 @@ class ErrorResponse(BaseModel):
     error: str
     code: Optional[str] = None
 
+class TranslateItem(BaseModel):
+    id: str
+    text: str
+
+class TranslateBatchRequest(BaseModel):
+    messages: List[TranslateItem]
+    target_lang: str
+
+class TranslateItemResponse(BaseModel):
+    id: str
+    translated_text: str
+
+class TranslateBatchResponse(BaseModel):
+    success: bool
+    translations: List[TranslateItemResponse]
+
 
 # ============ API Endpoints ============
-
-@app.get("/", tags=["Health"])
-async def root():
-    """Health check endpoint"""
-    return {
-        "status": "running",
-        "service": "CocoCastAI",
-        "version": "1.0.0"
-    }
 
 
 @app.get("/health", tags=["Health"])
@@ -188,6 +195,47 @@ async def ask_question(request: QuestionRequest):
             status_code=500,
             detail=f"Error processing question: {str(e)}"
         )
+@app.post("/translate-batch", response_model=TranslateBatchResponse, tags=["Advisory"])
+async def translate_batch(request: TranslateBatchRequest):
+    """
+    Translates a list of chat messages to the target language
+    """
+    try:
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        target_lang = request.target_lang.strip()
+        if target_lang not in ["en", "si"]:
+            raise HTTPException(status_code=400, detail="Invalid target language. Must be 'en' or 'si'")
+            
+        logger.info(f"Batch translating {len(request.messages)} messages to {target_lang}")
+        
+        # Run translations in parallel using ThreadPoolExecutor
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            tasks = [
+                loop.run_in_executor(
+                    executor, 
+                    translate_text, 
+                    msg.text, 
+                    target_lang
+                )
+                for msg in request.messages
+            ]
+            translated_texts = await asyncio.gather(*tasks)
+            
+        translations = [
+            TranslateItemResponse(id=msg.id, translated_text=translated_text)
+            for msg, translated_text in zip(request.messages, translated_texts)
+        ]
+        
+        return TranslateBatchResponse(
+            success=True,
+            translations=translations
+        )
+    except Exception as e:
+        logger.error(f"Error in batch translation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/compare", tags=["Advisory"])
@@ -284,7 +332,7 @@ if __name__ == "__main__":
     debug = os.getenv("DEBUG", "False").lower() == "true"
     
     uvicorn.run(
-        "main:app",
+        "app.main:app",
         host=host,
         port=port,
         reload=debug,

@@ -94,7 +94,7 @@ def get_plain_answer(question, user_context=None):
     llm = ChatGroq(
         model="llama-3.3-70b-versatile",
         api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0.7 # slightly higher for plain generation
+        temperature=0.7
     )
     
     prompt = PromptTemplate.from_template("""You are an AI assistant. Answer the following question to the best of your general knowledge.
@@ -111,6 +111,42 @@ Answer:""")
         "question": question,
         "answer": answer
     }
+def translate_text(text, target_lang):
+    """
+    Translates text to target_lang ('en' or 'si') using the LLM.
+    """
+    if not text.strip():
+        return ""
+    
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        api_key=os.getenv("GROQ_API_KEY"),
+        temperature=0.1
+    )
+    
+    lang_name = "Sinhala" if target_lang == "si" else "English"
+    prompt = PromptTemplate.from_template("""You are a professional translator fluent in English and Sinhala, specializing in agricultural terminology (specifically coconut farming in Sri Lanka).
+Translate the following text into {lang_name}. 
+Ensure that specific agricultural terms are translated accurately to their standard Sri Lankan agricultural equivalents. For example:
+- "Bud Rot" or "Bad Rot" should be translated to "කරටි කුණුවීම" in Sinhala.
+- "coconut cultivation" to "පොල් වගාව".
+- "fertilizer" to "පොහොර".
+- "diseases" to "රෝග".
+- "pest" to "පළිබෝධකයා".
+- "leaf" or "leaves" to "කොළ" or "පත්".
+
+Keep the exact structure, spacing, and formatting (like bullet points, lines, stars) intact.
+Only return the translated text. Do not include any explanations, introductory notes, or extra comments.
+
+Text to translate:
+{text}
+
+Translation:""")
+    
+    chain = prompt | llm | StrOutputParser()
+    translation = chain.invoke({"text": text, "lang_name": lang_name})
+    return translation.strip()
+
 
 if __name__ == "__main__":
     print("Loading RAG system...")
