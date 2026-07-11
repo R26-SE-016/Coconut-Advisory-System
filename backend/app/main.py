@@ -85,12 +85,14 @@ class QuestionRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "question": "What are the best practices for coconut tree maintenance?",
-                "context": "Optional context"
+                "context": "Optional context",
+                "language": "en"
             }
         }
     )
     question: str
     context: Optional[str] = None
+    language: Optional[str] = 'en'
 
 
 class SourceDocument(BaseModel):
@@ -159,6 +161,7 @@ async def ask_question(request: QuestionRequest):
         )
     
     question = request.question.strip()
+    user_lang = request.language.strip() if request.language else 'en'
     
     if not question:
         raise HTTPException(
@@ -167,8 +170,37 @@ async def ask_question(request: QuestionRequest):
         )
     
     try:
-        logger.info(f"Processing question: {question}")
-        result = get_answer(question, rag_chain, retriever, user_context=request.context)
+        logger.info(f"Processing question: {question} (Lang: {user_lang})")
+        
+        # Helper to check for Sinhala characters
+        def is_sinhala(text: str) -> bool:
+            return any('\u0d80' <= char <= '\u0dff' for char in text)
+        
+        # Translate question to English if it is in Sinhala
+        rag_question = question
+        if is_sinhala(question):
+            logger.info("Sinhala question detected. Translating to English for RAG...")
+            try:
+                rag_question = translate_text(question, "en")
+                logger.info(f"Translated question: {rag_question}")
+            except Exception as e:
+                logger.error(f"Error translating question to English: {str(e)}")
+                # Fallback to original question
+                rag_question = question
+        
+        # Query the RAG engine using the English query
+        result = get_answer(rag_question, rag_chain, retriever, user_context=request.context)
+        
+        # Translate the answer back to Sinhala if Sinhala is requested
+        answer = result["answer"]
+        if user_lang == "si":
+            logger.info("Translating answer to Sinhala...")
+            try:
+                answer = translate_text(answer, "si")
+                logger.info("Answer successfully translated to Sinhala.")
+            except Exception as e:
+                logger.error(f"Error translating answer to Sinhala: {str(e)}")
+                # Fallback to original English answer
         
         # Format sources
         sources = [
@@ -182,8 +214,8 @@ async def ask_question(request: QuestionRequest):
         
         return AnswerResponse(
             success=True,
-            question=result["question"],
-            answer=result["answer"],
+            question=question, # Return the original question asked by the user
+            answer=answer,     # Return translated or English answer
             sources=sources,
             confidence=result.get("confidence"),
             context_used=result.get("context_used")
@@ -195,6 +227,8 @@ async def ask_question(request: QuestionRequest):
             status_code=500,
             detail=f"Error processing question: {str(e)}"
         )
+
+
 @app.post("/translate-batch", response_model=TranslateBatchResponse, tags=["Advisory"])
 async def translate_batch(request: TranslateBatchRequest):
     """
