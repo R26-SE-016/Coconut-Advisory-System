@@ -20,13 +20,6 @@ if ! command -v python3 &> /dev/null; then
 fi
 echo -e "${GREEN}✓ Python $(python3 --version | cut -d' ' -f2) found${NC}"
 
-# Check Node
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js not found. Please install Node.js 16+"
-    exit 1
-fi
-echo -e "${GREEN}✓ Node.js $(node --version) found${NC}"
-
 # Setup Backend
 echo -e "${BLUE}Setting up Backend...${NC}"
 cd backend
@@ -59,25 +52,12 @@ fi
 # Return to root
 cd ..
 
-# Setup Frontend
-echo -e "${BLUE}Setting up Frontend...${NC}"
-cd frontend
-
-if [ ! -d "node_modules" ]; then
-    echo "Installing Node dependencies..."
-    npm install
-    echo -e "${GREEN}✓ Frontend dependencies installed${NC}"
-fi
-
-cd ..
-
 echo ""
 echo -e "${GREEN}✅ Setup complete!${NC}"
 echo ""
 echo "Next steps:"
 echo "1. Edit backend/.env with your GROQ_API_KEY"
 echo "2. Run backend: cd backend && source venv/bin/activate && python -m app.main"
-echo "3. Run frontend: cd frontend && npm start"
-echo "4. Configure API endpoint in app Settings"
+echo "3. Configure API endpoint in app Settings"
 echo ""
 echo "API Docs will be available at: http://localhost:8000/docs"
