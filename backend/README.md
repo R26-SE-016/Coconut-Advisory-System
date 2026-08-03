@@ -1,294 +1,239 @@
-# Backend - FastAPI Server
+# Coconut Advisory System - FastAPI Backend
 
-FastAPI backend service for CocoCastAI, providing REST API endpoints for mobile and web clients.
+A high-performance FastAPI backend service powering **SaruPol (CocoCastAI)**, a Retrieval-Augmented Generation (RAG) advisory system designed for Sri Lankan coconut farmers.
 
-## Setup
+It provides RAG knowledge retrieval from Coconut Research Institute (CRI) guidelines, Multi-LLM consensus validation, high-accuracy agricultural Sinhala translation, and Neural Text-to-Speech streaming.
+
+---
+
+## 🌟 Key Features
+
+- **Knowledge Base RAG Engine**: Uses FAISS vector search with `sentence-transformers/all-MiniLM-L6-v2` embeddings over CRI coconut cultivation documents.
+- **Multi-LLM Validator & Jury Judge (`/ask-multi`)**:
+  - Queries candidate LLMs in parallel (`LLaMA 3.3 70B`, `LLaMA 3.1 8B`, `Qwen`).
+  - Employs an AI Judge model (`openai/gpt-oss-120b`) to evaluate responses, output a consensus score, and select the best advisory answer.
+  - Automatically translates all 5 response fields (`best_answer`, `reason`, `llama_answer`, `llama8b_answer`, `qwen_answer`) into natural Sinhala when `language == "si"`.
+- **Farmer-Friendly Sinhala Translation Engine**:
+  - High-accuracy model cascade (`openai/gpt-oss-120b` $\rightarrow$ `llama-3.1-8b-instant`).
+  - Specialized Sri Lankan coconut extension terminology enforcement (e.g. `Wet Zone` $\rightarrow$ `තෙත් කලාපය`, `young coconut palms` $\rightarrow$ `තරුණ පොල් ගස්`).
+  - Automatic regex sanitizers to strip reasoning `<think>` tags and fix hallucinated terms.
+- **Server-Side Context Resolution**: Automatically determines Sri Lankan agro-climatic zones (Wet, Intermediate, Dry) from GPS coordinates and system agricultural seasons (Yala / Maha).
+- **Neural Text-To-Speech (`/tts`)**:
+  - Streams audio in real-time using `si-LK-SameeraNeural` for Sinhala and `en-US-AriaNeural` for English.
+  - Includes text normalization for Sinhala conjunct consonants and letter-by-letter pronunciation hints for fertilizer codes (e.g., `YPM-W`).
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework**: FastAPI / Uvicorn / Gunicorn
+- **Embeddings & Vector Store**: SentenceTransformers & FAISS
+- **LLM Provider**: Groq API (`openai/gpt-oss-120b`, `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
+- **TTS Engine**: `edge-tts` (Microsoft Edge Neural Speech)
+- **Language**: Python 3.9+
+
+---
+
+## 🚀 Quick Setup & Installation
 
 ### Prerequisites
 
-- Python 3.9+
-- FAISS index built (from `step1_build_index.py`)
-- Knowledge base documents in `knowledge_base/` folder
-- Groq API key
+- Python 3.9 or higher
+- Groq API Key ([Get one here](https://console.groq.com/))
+- FAISS vector index generated via `step1_build_index.py`
 
-### Installation
-
-1. **Create a Python virtual environment:**
+### 1. Environment Setup
 
 ```bash
 cd backend
 python -m venv venv
 
-# Activate it
-# Windows
+# Activate Virtual Environment
+# Windows:
 venv\Scripts\activate
-# macOS/Linux
+# macOS/Linux:
 source venv/bin/activate
-```
 
-2. **Install dependencies:**
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-3. **Configure environment variables:**
+### 2. Configure Environment Variables
 
-Copy `.env.example` to `.env` and update:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
+Create `.env` inside `backend/` directory:
 
 ```env
 API_HOST=0.0.0.0
 API_PORT=8000
 DEBUG=False
 
-# Required: Get from https://console.groq.com/
+# Required Groq API Key
 GROQ_API_KEY=your_groq_api_key_here
 
-# Paths to your index and knowledge base
+# Directory Paths
 KNOWLEDGE_BASE_DIR=../knowledge_base
 FAISS_INDEX_DIR=../faiss_index
 
-# Optional: For production, specify exact origins
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8081
+# CORS Origins
+ALLOWED_ORIGINS=*
 ```
 
-## Running the Server
+### 3. Build Vector Index (First Time Only)
 
-### Development
+If `faiss_index/` is not yet generated, build it from your knowledge base PDFs:
+
+```bash
+cd ..
+python step1_build_index.py
+```
+
+### 4. Start Server
 
 ```bash
 cd backend
 python -m app.main
-
-# or with auto-reload
-DEBUG=True python -m app.main
 ```
 
-### Production
+The backend server will run at: `http://localhost:8000`  
+Swagger API Documentation: `http://localhost:8000/docs`
 
-```bash
-# Using Gunicorn (recommended for production)
-gunicorn -w 4 -b 0.0.0.0:8000 app.main:app
+---
 
-# or with Uvicorn
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
+## 📖 API Endpoints Reference
 
-The server will be available at: `http://localhost:8000`
+### 1. Standard RAG Advisory Query (`POST /ask`)
 
-## API Documentation
+Queries the RAG knowledge base for coconut farming advice.
 
-### Interactive API Docs
-
-Once running, visit:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-### Endpoints
-
-#### Health Check
-
-```
-GET /health
-
-Response:
-{
-  "status": "healthy",
-  "rag_chain_loaded": true,
-  "retriever_loaded": true
-}
-```
-
-#### System Info
-
-```
-GET /info
-
-Response:
-{
-  "service": "CocoCastAI",
-  "version": "1.0.0",
-  "description": "RAG-based advisory...",
-  "endpoints": {
-    "ask": "/ask (POST)",
-    "health": "/health (GET)"
-  }
-}
-```
-
-#### Ask Question
-
-```
-POST /ask
-
-Request:
-{
-  "question": "How do I care for young coconut palms?",
-  "context": "optional context"
-}
-
-Response:
-{
-  "success": true,
-  "question": "How do I care for young coconut palms?",
-  "answer": "Based on the knowledge base...",
-  "sources": [
-    {
-      "title": "coconut_care.pdf",
-      "content": "Preview of the source document...",
-      "metadata": {
-        "source": "coconut_care.pdf"
-      }
-    }
-  ],
-  "confidence": 0.85
-}
-```
-
-## Environment Setup
-
-### Required Environment Variables
-
-- **GROQ_API_KEY**: API key from Groq console (required)
-- **API_HOST**: Host to bind to (default: 0.0.0.0)
-- **API_PORT**: Port to bind to (default: 8000)
-- **DEBUG**: Enable debug mode (default: False)
-
-### Optional Variables
-
-- **ALLOWED_ORIGINS**: CORS origins (default: *)
-- **KNOWLEDGE_BASE_DIR**: Path to knowledge base (default: knowledge_base)
-- **FAISS_INDEX_DIR**: Path to FAISS index (default: faiss_index)
-
-## Architecture
-
-```
-backend/
-├── app/
-│   ├── __init__.py
-│   └── main.py           # FastAPI app and endpoints
-├── requirements.txt      # Python dependencies
-├── .env.example          # Environment template
-└── README.md            # This file
-```
-
-## Integration with Frontend
-
-The mobile app connects to the backend using the API client:
-
-```typescript
-import { apiClient } from './src/services/ApiClient';
-
-// Set the API endpoint
-apiClient.setBaseURL('http://backend-server:8000');
-
-// Ask a question
-const response = await apiClient.askQuestion('Your question here');
-```
-
-## Error Handling
-
-The API returns standardized error responses:
-
+- **URL**: `/ask`
+- **Method**: `POST`
+- **Request Body**:
 ```json
 {
-  "success": false,
-  "error": "Question cannot be empty",
-  "code": "INVALID_INPUT"
+  "question": "How should I fertilize young coconut palms?",
+  "context": "Wet Zone | Yala Season (August)",
+  "language": "si"
+}
+```
+- **Response**:
+```json
+{
+  "success": true,
+  "question": "තරුණ පොල් ගස් වලට පොහොර යෙදිය යුත්තේ කෙසේද?",
+  "answer": "තරුණ පොල් ගස් සඳහා තෙත් කලාපයේ YPM-W පොහොර මිශ්‍රණය භාවිතා කිරීමට නිර්දේශ කරමි...",
+  "sources": [
+    {
+      "title": "English.pdf",
+      "content": "• Wet Zone: Rainfall in the wet zone...",
+      "metadata": { "source": "English.pdf" }
+    }
+  ],
+  "confidence": 0.85,
+  "context_used": "Wet Zone | Yala Season (August)"
 }
 ```
 
-Common HTTP Status Codes:
+---
 
-- **200 OK**: Request successful
-- **400 Bad Request**: Invalid input (empty question, etc.)
-- **503 Service Unavailable**: RAG chain not loaded
-- **500 Internal Server Error**: Processing error
+### 2. Multi-LLM Consensus Validator (`POST /ask-multi`)
 
-## Performance Optimization
+Queries 3 candidate models, uses an AI Judge to select the best response, and translates all candidate answers into Sinhala if requested.
 
-### For Production
-
-1. **Use multiple workers:**
-   ```bash
-   gunicorn -w 4 app.main:app
-   ```
-
-2. **Enable caching** for common questions
-
-3. **Use a reverse proxy** (Nginx):
-   ```nginx
-   location /api/ {
-     proxy_pass http://localhost:8000;
-     proxy_cache_valid 200 10m;
-   }
-   ```
-
-4. **Monitor performance:**
-   - Check RAG chain load time
-   - Monitor API response times
-   - Track error rates
-
-## Deployment
-
-### Docker
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-COPY ../faiss_index ./faiss_index
-COPY ../knowledge_base ./knowledge_base
-
-ENV GROQ_API_KEY=your_key_here
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+- **URL**: `/ask-multi`
+- **Method**: `POST`
+- **Request Body**:
+```json
+{
+  "question": "How do I control termites in coconut nursery?",
+  "latitude": 6.9271,
+  "longitude": 79.8612,
+  "language": "si"
+}
+```
+- **Response**:
+```json
+{
+  "success": true,
+  "best_answer": "පොල් තවානේ වේයන් පාලනය කිරීම සඳහා...",
+  "best_model": "llama8b",
+  "reason": "LLaMA 3.1 8B පිළිතුර CRI උපදෙස් වලට වඩාත් ගැළපෙන අතර සරල පියවර ලබා දෙයි.",
+  "consensus_score": 85,
+  "llama_answer": "පොල් තවාන් වල වේයන් පාලන පියවර...",
+  "llama8b_answer": "පොල් තවානේ වේයන් පාලනය කිරීම සඳහා...",
+  "qwen_answer": "තවානේ වේයන් හානිය පාලනය කිරීමට...",
+  "sources": [...],
+  "zone": "Wet Zone",
+  "season": "Yala (August)"
+}
 ```
 
-### Cloud Deployment
+---
 
-- **AWS**: Deploy on EC2, Lambda, or ECS
-- **Google Cloud**: Use Cloud Run or App Engine
-- **Azure**: Use App Service or Container Instances
-- **Heroku**: Supported with configuration
+### 3. Batch Translation (`POST /translate-batch`)
 
-## Troubleshooting
+Translates a list of chat items into the target language (`si` or `en`).
 
-### RAG Chain Not Loading
+- **URL**: `/translate-batch`
+- **Method**: `POST`
+- **Request Body**:
+```json
+{
+  "messages": [
+    { "id": "msg1", "text": "How do I select a good mother palm?" },
+    { "id": "msg2", "text": "What is the recommended spacing?" }
+  ],
+  "target_lang": "si"
+}
+```
+- **Response**:
+```json
+{
+  "success": true,
+  "translations": [
+    { "id": "msg1", "translated_text": "හොඳ මව් පොල් ගසක් තෝරා ගන්නේ කෙසේද?" },
+    { "id": "msg2", "translated_text": "පොල් ගස් සිටුවීමට නිර්දේශිත පරතරය කුමක්ද?" }
+  ]
+}
+```
+
+---
+
+### 4. Text-To-Speech Stream (`GET /tts`)
+
+Generates an audio stream of the given text in natural neural speech.
+
+- **URL**: `/tts?text=තරුණ පොල් ගස් වලට පොහොර යෙදීම&lang=si`
+- **Method**: `GET`
+- **Response**: Audio stream (`audio/mpeg`)
+
+---
+
+### 5. Health & Info Endpoints
+
+- **`GET /health`**: Returns system health and status of RAG retriever loading.
+- **`GET /info`**: Returns API metadata and registered endpoints.
+
+---
+
+## 📂 Project Structure
 
 ```
-Error: Failed to load RAG chain
+coconut_advisory_system/
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   └── main.py              # FastAPI entry point & API endpoints
+│   ├── requirements.txt         # Dependencies
+│   ├── .env.example             # Environment template
+│   └── README.md                # Backend documentation
+├── faiss_index/                 # FAISS vector store
+├── knowledge_base/              # PDF documents (CRI guidelines)
+├── step1_build_index.py         # Document embedding & vector indexing
+└── step2_rag_engine.py          # Core RAG retrieval & Sinhala translator
 ```
 
-- Check FAISS index exists in `faiss_index/`
-- Verify GROQ_API_KEY is set
-- Check knowledge base files exist
+---
 
-### Connection Refused
+## 🛡️ License
 
-- Verify API_HOST and API_PORT in .env
-- Check firewall rules
-- Ensure port is not in use
-
-### High Response Times
-
-- Monitor model inference time
-- Check system memory
-- Consider using GPU
-- Optimize retriever search parameters
-
-## License
-
-MIT
+Developed for the Coconut Advisory System (SaruPol / CocoCastAI).
