@@ -1,1 +1,1 @@
-"""CocoCastAI Backend Package"""
+"""SaruPol Backend Package"""

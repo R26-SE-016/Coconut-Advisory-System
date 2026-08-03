@@ -1,5 +1,5 @@
 """
-FastAPI Backend for CocoCastAI
+FastAPI Backend for SaruPol
 Provides REST API endpoints for mobile and web clients
 """
 
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="CocoCastAI API",
+    title="SaruPol API",
     description="RAG-based advisory system for coconut farming in Sri Lanka",
     version="1.0.0",
     lifespan=lifespan
@@ -75,7 +75,7 @@ async def root():
         return FileResponse(index_file)
     return {
         "status": "running",
-        "service": "CocoCastAI",
+        "service": "SaruPol",
         "version": "1.0.0",
         "message": "Web interface not found at /static/index.html"
     }
@@ -192,7 +192,7 @@ async def health_check():
 @app.post("/ask", response_model=AnswerResponse, tags=["Advisory"])
 async def ask_question(request: QuestionRequest):
     """
-    Ask a question to the CocoCastAI system
+    Ask a question to the SaruPol system
     
     Returns:
         - question: The question asked
@@ -608,7 +608,7 @@ async def text_to_speech(text: str, lang: str = "en"):
 async def get_info():
     """Get system information"""
     return {
-        "service": "CocoCastAI",
+        "service": "SaruPol",
         "version": "1.0.0",
         "description": "RAG-based advisory system for coconut farming in Sri Lanka",
         "endpoints": {
