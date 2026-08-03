@@ -1,7 +1,7 @@
 @echo off
-REM Quick Start Setup Script for CocoCastAI (Windows)
+REM Quick Start Setup Script for SaruPol (Windows)
 
-echo 🥥 CocoCastAI - Setup
+echo 🥥 SaruPol - Setup
 echo ====================================
 
 REM Check Python

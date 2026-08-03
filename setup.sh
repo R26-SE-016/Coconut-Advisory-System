@@ -1,7 +1,7 @@
 #!/bin/bash
-# Quick Start Setup Script for CocoCastAI
+# Quick Start Setup Script for SaruPol
 
-echo "🥥 CocoCastAI - Setup"
+echo "🥥 SaruPol - Setup"
 echo "===================================="
 
 # Colors for output
