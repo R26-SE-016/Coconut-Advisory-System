@@ -1,4 +1,4 @@
-# CocoCastAI - Mobile App
+# SaruPol - Coconut Advisory System
 
 A complete mobile application for coconut farming advisory using **React Native** frontend and **FastAPI** backend with RAG (Retrieval-Augmented Generation).
 

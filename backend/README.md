@@ -1,6 +1,6 @@
 # Coconut Advisory System - FastAPI Backend
 
-A high-performance FastAPI backend service powering **SaruPol (CocoCastAI)**, an AI-driven Retrieval-Augmented Generation (RAG) advisory platform engineered for Sri Lankan coconut farmers.
+A high-performance FastAPI backend service powering **SaruPol**, an AI-driven Retrieval-Augmented Generation (RAG) advisory platform engineered for Sri Lankan coconut farmers.
 
 It integrates vector search across Coconut Research Institute (CRI) guidelines, Multi-LLM consensus validation, a farmer-friendly agricultural Sinhala translation pipeline, and real-time Neural Text-to-Speech (TTS) streaming.
 
@@ -198,4 +198,4 @@ Generates real-time MP3 speech audio streams for Sinhala (`si-LK-SameeraNeural`)
 
 ## 🛡️ License
 
-Developed for the Coconut Advisory System (SaruPol / CocoCastAI).
+Developed for the Coconut Advisory System (SaruPol).
