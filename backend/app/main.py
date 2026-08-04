@@ -1,6 +1,7 @@
 """
 FastAPI Backend for SaruPol
 Provides REST API endpoints for mobile and web clients
+Updated with 82 CRI Reference Images
 """
 
 from fastapi import FastAPI, HTTPException
@@ -17,7 +18,7 @@ import logging
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_plain_answer, translate_text, get_multi_llm_answer, translate_multi_llm_payload
+from step2_rag_engine import load_rag_chain, get_answer, get_plain_answer, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images
 
 # Load environment variables
 load_dotenv()
@@ -101,11 +102,20 @@ class SourceDocument(BaseModel):
     metadata: Optional[dict] = None
 
 
+class ImageReference(BaseModel):
+    url: str
+    caption: str
+    source: str
+
+
 class AnswerResponse(BaseModel):
     success: bool
     question: str
     answer: str
     sources: List[SourceDocument]
+    images: Optional[List[ImageReference]] = []
+    zone: Optional[str] = None
+    season: Optional[str] = None
     confidence: Optional[float] = None
     context_used: Optional[str] = None
 
@@ -259,12 +269,33 @@ async def ask_question(request: QuestionRequest):
             )
             for source in result.get("sources", [])
         ]
+
+        # Find top 2 semantically relevant CRI reference images using question + answer context
+        search_query = f"{rag_question}\n{result['answer'][:400]}"
+        raw_images = find_relevant_images(search_query, top_k=2)
+        images = [
+            ImageReference(
+                url=img["url"],
+                caption=img["caption"],
+                source=img["source"]
+            )
+            for img in raw_images
+        ]
         
+        # Calculate zone and season
+        season = _determine_season()
+        zone = "Wet Zone"
+        if request.context and "|" in request.context:
+            zone = request.context.split("|")[0].strip()
+
         return AnswerResponse(
             success=True,
             question=display_question, # Return Sinhala translated or original question
             answer=answer,     # Return translated or English answer
             sources=sources,
+            images=images,
+            zone=zone,
+            season=season,
             confidence=result.get("confidence"),
             context_used=result.get("context_used")
         )
