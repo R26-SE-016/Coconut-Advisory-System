@@ -15,10 +15,12 @@ import os
 from dotenv import load_dotenv
 import logging
 
+import uuid
+
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_plain_answer, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images
+from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, get_plain_answer, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images
 
 # Load environment variables
 load_dotenv()
@@ -87,13 +89,19 @@ class QuestionRequest(BaseModel):
             "example": {
                 "question": "What are the best practices for coconut tree maintenance?",
                 "context": "Optional context",
-                "language": "en"
+                "language": "en",
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "latitude": 6.9271,
+                "longitude": 79.8612
             }
         }
     )
     question: str
     context: Optional[str] = None
     language: Optional[str] = 'en'
+    session_id: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class SourceDocument(BaseModel):
@@ -118,6 +126,7 @@ class AnswerResponse(BaseModel):
     season: Optional[str] = None
     confidence: Optional[float] = None
     context_used: Optional[str] = None
+    session_id: Optional[str] = None
 
 class ErrorResponse(BaseModel):
     success: bool = False
@@ -202,12 +211,13 @@ async def health_check():
 @app.post("/ask", response_model=AnswerResponse, tags=["Advisory"])
 async def ask_question(request: QuestionRequest):
     """
-    Ask a question to the SaruPol system
+    Ask a question to the SaruPol system with conversation memory support.
     
     Returns:
         - question: The question asked
         - answer: The AI-generated answer
         - sources: Source documents used for the answer
+        - session_id: Unique conversation session ID
     """
     if not rag_chain or not retriever:
         raise HTTPException(
@@ -223,9 +233,12 @@ async def ask_question(request: QuestionRequest):
             status_code=400,
             detail="Question cannot be empty"
         )
+
+    # Manage session_id (generate new UUID if not provided)
+    session_id = request.session_id.strip() if (request.session_id and request.session_id.strip()) else str(uuid.uuid4())
     
     try:
-        logger.info(f"Processing question: {question} (Lang: {user_lang})")
+        logger.info(f"Processing question for session [{session_id}]: {question} (Lang: {user_lang})")
         
         # Helper to check for Sinhala characters
         def is_sinhala(text: str) -> bool:
@@ -243,8 +256,25 @@ async def ask_question(request: QuestionRequest):
                 # Fallback to original question
                 rag_question = question
         
-        # Query the RAG engine using the English query
-        result = get_answer(rag_question, rag_chain, retriever, user_context=request.context)
+        # Calculate context / zone
+        user_context = request.context
+        zone = "Wet Zone"
+        if request.latitude is not None and request.longitude is not None:
+            zone = _determine_zone(request.latitude, request.longitude)
+            season_name = _determine_season()
+            month_name = _get_month_name()
+            user_context = f"{zone} | {season_name} Season ({month_name})"
+        elif request.context and "|" in request.context:
+            zone = request.context.split("|")[0].strip()
+
+        # Query the RAG engine with memory using English query & session_id
+        result = get_answer_with_memory(
+            rag_question,
+            session_id,
+            rag_chain,
+            retriever,
+            user_context=user_context
+        )
         
         # Translate the answer back to Sinhala if Sinhala is requested
         answer = result["answer"]
@@ -282,11 +312,8 @@ async def ask_question(request: QuestionRequest):
             for img in raw_images
         ]
         
-        # Calculate zone and season
+        # Calculate season
         season = _determine_season()
-        zone = "Wet Zone"
-        if request.context and "|" in request.context:
-            zone = request.context.split("|")[0].strip()
 
         return AnswerResponse(
             success=True,
@@ -297,7 +324,8 @@ async def ask_question(request: QuestionRequest):
             zone=zone,
             season=season,
             confidence=result.get("confidence"),
-            context_used=result.get("context_used")
+            context_used=result.get("context_used"),
+            session_id=session_id
         )
         
     except Exception as e:
