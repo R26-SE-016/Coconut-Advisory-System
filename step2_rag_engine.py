@@ -1,14 +1,17 @@
-# step2_rag_engine.py
-
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from dotenv import load_dotenv
 import os
 import json
+import time
+import uuid
+from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -16,6 +19,85 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # Resolve FAISS index path relative to this file (project root)
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 FAISS_INDEX_PATH = os.path.join(_ROOT_DIR, "faiss_index")
+
+# ============ Conversation Memory Store (30-Minute Inactivity TTL) ============
+SESSION_STORE: Dict[str, Dict[str, Any]] = {}
+SESSION_TIMEOUT_SECONDS = 1800  # 30 minutes
+
+
+def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
+    """
+    Retrieve or create conversation history for a given session_id.
+    Automatically purges sessions inactive for more than 30 minutes.
+    """
+    current_time = time.time()
+
+    # Cleanup expired sessions (inactive > 30 minutes)
+    expired_sessions = [
+        sid for sid, data in SESSION_STORE.items()
+        if current_time - data.get("last_accessed", 0) > SESSION_TIMEOUT_SECONDS
+    ]
+    for sid in expired_sessions:
+        del SESSION_STORE[sid]
+
+    if session_id not in SESSION_STORE:
+        SESSION_STORE[session_id] = {
+            "history": InMemoryChatMessageHistory(),
+            "last_accessed": current_time
+        }
+    else:
+        SESSION_STORE[session_id]["last_accessed"] = current_time
+
+    return SESSION_STORE[session_id]["history"]
+
+
+_MEMORY_QA_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka.
+Use ONLY the information from the context below to answer the question.
+If the answer is not found in the context, say: "I don't have information about that in my knowledge base."
+Give practical advice a farmer can understand and apply immediately.
+
+Context:
+{context}"""),
+    MessagesPlaceholder(variable_name="chat_history"),
+    ("human", "{question}")
+])
+
+
+def _contextualize_question(question: str, session_id: str) -> str:
+    """
+    If there is prior history in session_id, rephrase follow-up questions
+    into a standalone question for optimal vector retrieval.
+    """
+    history = get_session_history(session_id)
+    if not history.messages:
+        return question
+
+    recent_msgs = history.messages[-6:]
+    history_text = "\n".join([f"{msg.type.capitalize()}: {msg.content}" for msg in recent_msgs])
+
+    try:
+        condense_prompt = PromptTemplate.from_template(
+            "Given the following conversation history between a farmer and an advisor, "
+            "and a follow-up question, rephrase the follow-up question to be a complete standalone question "
+            "about coconut farming in Sri Lanka. Do NOT answer it, just return the rephrased standalone question.\n\n"
+            "Chat History:\n{history}\n\n"
+            "Follow-up Question: {question}\n\n"
+            "Standalone Question:"
+        )
+        llm_condense = ChatGroq(
+            model="llama-3.1-8b-instant",
+            api_key=os.getenv("GROQ_API_KEY"),
+            temperature=0.1
+        )
+        chain = condense_prompt | llm_condense | StrOutputParser()
+        standalone_q = chain.invoke({"history": history_text, "question": question}).strip()
+        return standalone_q if standalone_q else question
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to contextualize question: {e}")
+        return question
+
 
 def load_rag_chain():
     embeddings = HuggingFaceEmbeddings(
@@ -64,43 +146,71 @@ Answer:""")
     return rag_chain, retriever
 
 
-def get_answer(question, rag_chain, retriever, user_context=None):
-    search_query = f"User Context: {user_context}\nQuestion: {question}" if user_context else question
+def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever, user_context=None) -> dict:
+    """
+    Executes RAG question answering while maintaining session-specific conversation memory.
+    Injects past history into the LLM prompt and saves current interaction to history.
+    """
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    # 1. Rephrase follow-up question using chat history for accurate RAG vector retrieval
+    standalone_q = _contextualize_question(question, session_id)
+    search_query = f"User Context: {user_context}\nQuestion: {standalone_q}" if user_context else standalone_q
+
+    # 2. Retrieve source documents
+    source_docs = retriever.invoke(search_query)
+    context = "\n\n".join(doc.page_content for doc in source_docs)
+
+    # 3. Build RunnableWithMessageHistory for the QA prompt
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        api_key=os.getenv("GROQ_API_KEY"),
+        temperature=0.2
+    )
+
+    qa_chain = _MEMORY_QA_PROMPT | llm | StrOutputParser()
+
+    with_message_history = RunnableWithMessageHistory(
+        qa_chain,
+        get_session_history,
+        input_messages_key="question",
+        history_messages_key="chat_history"
+    )
+
     try:
-        answer = rag_chain.invoke(search_query)
+        answer = with_message_history.invoke(
+            {"question": question, "context": context},
+            config={"configurable": {"session_id": session_id}}
+        )
     except Exception as primary_err:
         import logging
-        logging.getLogger(__name__).warning(f"Primary RAG chain failed: {primary_err}. Attempting fallback model...")
+        logging.getLogger(__name__).warning(f"Primary memory RAG chain failed: {primary_err}. Fallback...")
         try:
             fb_llm = ChatGroq(model="gemma2-9b-it", api_key=os.getenv("GROQ_API_KEY"), temperature=0.2)
-            source_docs_fb = retriever.invoke(search_query)
-            context_fb = "\n\n".join(doc.page_content for doc in source_docs_fb)
-            prompt_fb = PromptTemplate.from_template("""You are an expert agricultural advisor for coconut farming in Sri Lanka.
-Use ONLY the information from the context below to answer the question.
-If the answer is not found in the context, say: "I don't have information about that in my knowledge base."
-Give practical advice a farmer can understand and apply immediately.
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:""")
-            chain_fb = prompt_fb | fb_llm | StrOutputParser()
-            answer = chain_fb.invoke({"context": context_fb, "question": question})
+            fb_chain = _MEMORY_QA_PROMPT | fb_llm | StrOutputParser()
+            fb_with_history = RunnableWithMessageHistory(
+                fb_chain,
+                get_session_history,
+                input_messages_key="question",
+                history_messages_key="chat_history"
+            )
+            answer = fb_with_history.invoke(
+                {"question": question, "context": context},
+                config={"configurable": {"session_id": session_id}}
+            )
         except Exception as fb_err:
-            logging.getLogger(__name__).error(f"Fallback RAG chain error: {fb_err}")
+            logging.getLogger(__name__).error(f"Fallback memory RAG chain error: {fb_err}")
             answer = "Sorry, I am facing connectivity issues to my knowledge base. Please check your internet connection."
 
-    source_docs = retriever.invoke(search_query)
+    # Format source documents
     sources = []
     for doc in source_docs:
         source_title = os.path.basename(doc.metadata.get("source", "Unknown"))
-        # Avoid duplicate sources
         if not any(s["title"] == source_title for s in sources):
             sources.append({
                 "title": source_title,
-                "content": doc.page_content[:200],  # First 200 chars as preview
+                "content": doc.page_content[:200],
                 "metadata": doc.metadata
             })
 
@@ -108,9 +218,17 @@ Answer:""")
         "question": question,
         "answer": answer,
         "sources": sources,
-        "confidence": 0.85,  # Placeholder confidence score
-        "context_used": user_context
+        "confidence": 0.85,
+        "context_used": user_context,
+        "session_id": session_id
     }
+
+
+def get_answer(question, rag_chain, retriever, user_context=None, session_id=None):
+    if session_id:
+        return get_answer_with_memory(question, session_id, rag_chain, retriever, user_context=user_context)
+    temp_session_id = str(uuid.uuid4())
+    return get_answer_with_memory(question, temp_session_id, rag_chain, retriever, user_context=user_context)
 
 def get_plain_answer(question, user_context=None):
     """
