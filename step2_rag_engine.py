@@ -187,7 +187,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         import logging
         logging.getLogger(__name__).warning(f"Primary memory RAG chain failed: {primary_err}. Fallback...")
         try:
-            fb_llm = ChatGroq(model="gemma2-9b-it", api_key=os.getenv("GROQ_API_KEY"), temperature=0.2)
+            fb_llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"), temperature=0.2)
             fb_chain = _MEMORY_QA_PROMPT | fb_llm | StrOutputParser()
             fb_with_history = RunnableWithMessageHistory(
                 fb_chain,
@@ -230,31 +230,7 @@ def get_answer(question, rag_chain, retriever, user_context=None, session_id=Non
     temp_session_id = str(uuid.uuid4())
     return get_answer_with_memory(question, temp_session_id, rag_chain, retriever, user_context=user_context)
 
-def get_plain_answer(question, user_context=None):
-    """
-    Queries the LLM directly without any RAG context.
-    Used for comparison to show the value of the RAG system.
-    """
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0.7
-    )
-    
-    prompt = PromptTemplate.from_template("""You are an AI assistant. Answer the following question to the best of your general knowledge.
-    
-User Context: {user_context}
-Question: {question}
-    
-Answer:""")
-    
-    chain = prompt | llm | StrOutputParser()
-    answer = chain.invoke({"question": question, "user_context": user_context or "None"})
-    
-    return {
-        "question": question,
-        "answer": answer
-    }
+
 def _clean_llm_translation_output(text: str) -> str:
     """Strips thinking tags (<think>...</think>) and extraneous markdown wrappers from LLM output."""
     if not text:
@@ -263,6 +239,7 @@ def _clean_llm_translation_output(text: str) -> str:
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
     text = re.sub(r'.*?</think>', '', text, flags=re.DOTALL)
+    text = re.sub(r'^\*{0,2}(?:sinhala translation|english translation|translation):\*{0,2}\s*', '', text, flags=re.IGNORECASE).strip()
     return text.strip()
 
 def _sanitize_sinhala_advisory(text: str) -> str:
@@ -376,7 +353,7 @@ ENGLISH TRANSLATION:""")
 
 def translate_multi_llm_payload(payload: dict, target_lang: str = "si") -> dict:
     """
-    Translates Multi-LLM fields (best_answer, reason, llama_answer, llama8b_answer, qwen_answer)
+    Translates Multi-LLM fields (best_answer, reason, llama_answer, llama8b_answer, gemma_answer)
     field-by-field sequentially with slight delay to stay within Groq 8000 TPM limits.
     """
     if not payload:
@@ -403,7 +380,7 @@ def translate_multi_llm_payload(payload: dict, target_lang: str = "si") -> dict:
 MULTI_LLM_MODELS = {
     "llama": "openai/gpt-oss-120b",
     "llama8b": "llama-3.1-8b-instant",
-    "qwen": "gemma2-9b-it",
+    "gemma": "llama-3.3-70b-versatile",
 }
 
 _ADVISOR_PROMPT_TEMPLATE = """You are an expert agricultural advisor for coconut farming in Sri Lanka.
@@ -445,11 +422,11 @@ ANSWER FROM LLaMA 3.1 8B:
 {llama8b_answer}
 
 ANSWER FROM Gemma 2 9B:
-{qwen_answer}
+{gemma_answer}
 
 Respond with ONLY valid JSON in this exact format, no other text:
 {{
-  "best_model": "llama" or "llama8b" or "qwen",
+  "best_model": "llama" or "llama8b" or "gemma",
   "reason": "Brief explanation of why this answer is most faithful to the CRI documents",
   "consensus_score": <number 0-100>
 }}"""
@@ -540,7 +517,7 @@ def get_multi_llm_answer(question, retriever, user_context=None):
             "question": question,
             "llama_answer": answers["llama"][:600],
             "llama8b_answer": answers["llama8b"][:600],
-            "qwen_answer": answers["qwen"][:600]
+            "gemma_answer": answers["gemma"][:600]
         }
         judge_raw = judge_chain.invoke(judge_payload)
     except Exception as judge_err:
@@ -580,7 +557,8 @@ def get_multi_llm_answer(question, retriever, user_context=None):
         "consensus_score": judge_result.get("consensus_score", 50),
         "llama_answer": answers["llama"],
         "llama8b_answer": answers["llama8b"],
-        "qwen_answer": answers["qwen"],
+        "gemma_answer": answers["gemma"],
+        "qwen_answer": answers["gemma"],
         "sources": sources,
         "context_used": user_context
     }
