@@ -4,7 +4,7 @@ Provides REST API endpoints for mobile and web clients
 Updated with 82 CRI Reference Images
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
@@ -65,10 +65,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
+# Mount static files (support both /static and /api/static prefixes)
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.mount("/api/static", StaticFiles(directory=static_dir), name="api_static")
 
 @app.get("/", tags=["Health"])
 async def root():
@@ -197,8 +198,10 @@ def _get_month_name() -> str:
 
 # ============ API Endpoints ============
 
+router = APIRouter()
 
-@app.get("/health", tags=["Health"])
+
+@router.get("/health", tags=["Health"])
 async def health_check():
     """Detailed health check"""
     return {
@@ -208,7 +211,7 @@ async def health_check():
     }
 
 
-@app.post("/ask", response_model=AnswerResponse, tags=["Advisory"])
+@router.post("/ask", response_model=AnswerResponse, tags=["Advisory"])
 async def ask_question(request: QuestionRequest):
     """
     Ask a question to the SaruPol system with conversation memory support.
@@ -336,7 +339,7 @@ async def ask_question(request: QuestionRequest):
         )
 
 
-@app.post("/translate-batch", response_model=TranslateBatchResponse, tags=["Advisory"])
+@router.post("/translate-batch", response_model=TranslateBatchResponse, tags=["Advisory"])
 async def translate_batch(request: TranslateBatchRequest):
     """
     Translates a list of chat messages to the target language
@@ -379,7 +382,7 @@ async def translate_batch(request: TranslateBatchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/compare", tags=["Advisory"])
+@router.post("/compare", tags=["Advisory"])
 async def compare_answers(request: QuestionRequest):
     """
     Compare Plain LLM vs RAG system
@@ -439,7 +442,7 @@ async def compare_answers(request: QuestionRequest):
         )
 
 
-@app.post("/ask-multi", response_model=MultiLLMResponse, tags=["Advisory"])
+@router.post("/ask-multi", response_model=MultiLLMResponse, tags=["Advisory"])
 async def ask_multi_llm(request: MultiLLMRequest):
     """
     Multi-LLM Validation: Send the same question to 3 LLMs in parallel,
@@ -549,7 +552,7 @@ async def ask_multi_llm(request: MultiLLMRequest):
         raise HTTPException(status_code=500, detail=f"Error processing multi-LLM query: {str(e)}")
 
 
-@app.get("/tts", tags=["TTS"])
+@router.get("/tts", tags=["TTS"])
 async def text_to_speech(text: str, lang: str = "en"):
     """
     Generate Text-to-Speech audio stream for a given text and language.
@@ -663,7 +666,7 @@ async def text_to_speech(text: str, lang: str = "en"):
         raise HTTPException(status_code=500, detail=f"TTS generation error: {str(e)}")
 
 
-@app.get("/info", tags=["Info"])
+@router.get("/info", tags=["Info"])
 async def get_info():
     """Get system information"""
     return {
@@ -675,6 +678,11 @@ async def get_info():
             "health": "/health (GET)"
         }
     }
+
+
+# Include router with and without /api prefix for maximum compatibility
+app.include_router(router)
+app.include_router(router, prefix="/api")
 
 
 @app.exception_handler(Exception)
