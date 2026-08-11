@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 import os
+import asyncio
 from dotenv import load_dotenv
 import logging
 
@@ -20,7 +21,7 @@ import uuid
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, get_plain_answer, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images
+from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images
 
 # Load environment variables
 load_dotenv()
@@ -166,7 +167,8 @@ class MultiLLMResponse(BaseModel):
     consensus_score: int
     llama_answer: str
     llama8b_answer: str
-    qwen_answer: str
+    gemma_answer: Optional[str] = None
+    qwen_answer: Optional[str] = None
     sources: List[SourceDocument]
     zone: Optional[str] = None
     season: Optional[str] = None
@@ -252,7 +254,7 @@ async def ask_question(request: QuestionRequest):
         if is_sinhala(question):
             logger.info("Sinhala question detected. Translating to English for RAG...")
             try:
-                rag_question = translate_text(question, "en")
+                rag_question = await asyncio.to_thread(translate_text, question, "en")
                 logger.info(f"Translated question: {rag_question}")
             except Exception as e:
                 logger.error(f"Error translating question to English: {str(e)}")
@@ -271,7 +273,8 @@ async def ask_question(request: QuestionRequest):
             zone = request.context.split("|")[0].strip()
 
         # Query the RAG engine with memory using English query & session_id
-        result = get_answer_with_memory(
+        result = await asyncio.to_thread(
+            get_answer_with_memory,
             rag_question,
             session_id,
             rag_chain,
@@ -285,9 +288,9 @@ async def ask_question(request: QuestionRequest):
         if user_lang == "si":
             logger.info("Translating answer to Sinhala...")
             try:
-                answer = translate_text(answer, "si")
+                answer = await asyncio.to_thread(translate_text, answer, "si")
                 if not is_sinhala(question):
-                    display_question = translate_text(question, "si")
+                    display_question = await asyncio.to_thread(translate_text, question, "si")
                 logger.info("Answer and question successfully translated to Sinhala.")
             except Exception as e:
                 logger.error(f"Error translating answer to Sinhala: {str(e)}")
@@ -305,7 +308,7 @@ async def ask_question(request: QuestionRequest):
 
         # Find top 2 semantically relevant CRI reference images using question + answer context
         search_query = f"{rag_question}\n{result['answer'][:400]}"
-        raw_images = find_relevant_images(search_query, top_k=2)
+        raw_images = await asyncio.to_thread(find_relevant_images, search_query, top_k=2)
         images = [
             ImageReference(
                 url=img["url"],
@@ -382,64 +385,7 @@ async def translate_batch(request: TranslateBatchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/compare", tags=["Advisory"])
-async def compare_answers(request: QuestionRequest):
-    """
-    Compare Plain LLM vs RAG system
-    """
-    if not rag_chain or not retriever:
-        raise HTTPException(
-            status_code=503,
-            detail="RAG chain not loaded. Please try again later."
-        )
-    
-    question = request.question.strip()
-    
-    if not question:
-        raise HTTPException(
-            status_code=400,
-            detail="Question cannot be empty"
-        )
-    
-    try:
-        logger.info(f"Comparing question: {question}")
-        
-        # Get Plain LLM Answer
-        plain_result = get_plain_answer(question, user_context=request.context)
-        
-        # Get RAG Answer
-        rag_result = get_answer(question, rag_chain, retriever, user_context=request.context)
-        
-        # Format sources
-        sources = [
-            SourceDocument(
-                title=source.get("title", "Document"),
-                content=source.get("content", ""),
-                metadata=source.get("metadata")
-            )
-            for source in rag_result.get("sources", [])
-        ]
-        
-        return {
-            "success": True,
-            "question": question,
-            "plain_llm": {
-                "answer": plain_result["answer"]
-            },
-            "rag_system": {
-                "answer": rag_result["answer"],
-                "sources": sources,
-                "confidence": rag_result.get("confidence"),
-                "context_used": rag_result.get("context_used")
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error comparing answers: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error comparing answers: {str(e)}"
-        )
+# Multi-LLM Validation endpoint
 
 
 @router.post("/ask-multi", response_model=MultiLLMResponse, tags=["Advisory"])
@@ -466,7 +412,7 @@ async def ask_multi_llm(request: MultiLLMRequest):
         if is_sinhala(question):
             logger.info("Sinhala multi-LLM question detected. Translating to English for RAG...")
             try:
-                rag_question = translate_text(question, "en")
+                rag_question = await asyncio.to_thread(translate_text, question, "en")
                 logger.info(f"Translated multi-LLM question: {rag_question}")
             except Exception as e:
                 logger.error(f"Error translating multi-LLM question to English: {str(e)}")
@@ -489,17 +435,15 @@ async def ask_multi_llm(request: MultiLLMRequest):
         logger.info(f"Multi-LLM query: {rag_question} (Lang: {user_lang}) | Context: {user_context}")
 
         # Run multi-LLM validation (parallel execution inside)
-        import asyncio
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, get_multi_llm_answer, rag_question, retriever, user_context
+        result = await asyncio.to_thread(
+            get_multi_llm_answer, rag_question, retriever, user_context
         )
 
         # Extract fields
         best_answer = result["best_answer"]
         llama_answer = result["llama_answer"]
         llama8b_answer = result["llama8b_answer"]
-        qwen_answer = result["qwen_answer"]
+        gemma_answer = result.get("gemma_answer") or result.get("qwen_answer", "")
         reason = result["reason"]
 
         # Post-translate answers back to Sinhala if requested
@@ -510,15 +454,15 @@ async def ask_multi_llm(request: MultiLLMRequest):
                 "reason": reason,
                 "llama_answer": llama_answer,
                 "llama8b_answer": llama8b_answer,
-                "qwen_answer": qwen_answer
+                "gemma_answer": gemma_answer
             }
             try:
-                translated_dict = translate_multi_llm_payload(payload_to_translate, target_lang="si")
+                translated_dict = await asyncio.to_thread(translate_multi_llm_payload, payload_to_translate, target_lang="si")
                 best_answer = translated_dict.get("best_answer", best_answer)
                 reason = translated_dict.get("reason", reason)
                 llama_answer = translated_dict.get("llama_answer", llama_answer)
                 llama8b_answer = translated_dict.get("llama8b_answer", llama8b_answer)
-                qwen_answer = translated_dict.get("qwen_answer", qwen_answer)
+                gemma_answer = translated_dict.get("gemma_answer", gemma_answer)
                 logger.info("Multi-LLM response fields successfully translated to Sinhala.")
             except Exception as e:
                 logger.error(f"Error translating Multi-LLM payload to Sinhala: {e}")
@@ -541,7 +485,8 @@ async def ask_multi_llm(request: MultiLLMRequest):
             consensus_score=result["consensus_score"],
             llama_answer=llama_answer,
             llama8b_answer=llama8b_answer,
-            qwen_answer=qwen_answer,
+            gemma_answer=gemma_answer,
+            qwen_answer=gemma_answer,
             sources=sources,
             zone=zone,
             season=f"{season} ({month})"
