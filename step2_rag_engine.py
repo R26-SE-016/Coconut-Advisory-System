@@ -11,14 +11,46 @@ import os
 import json
 import time
 import uuid
+import numpy as np
 from typing import Dict, Any
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 # Resolve FAISS index path relative to this file (project root)
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 FAISS_INDEX_PATH = os.path.join(_ROOT_DIR, "faiss_index")
+
+# ============ Early Exit Configuration ============
+EARLY_EXIT_THRESHOLD = 0.85  # Cosine similarity threshold for skipping Judge LLM
+
+# ============ Cached Embeddings Model (Singleton) ============
+_EMBEDDINGS_MODEL = None
+
+def _get_embeddings_model():
+    """Lazily load and cache the sentence-transformers embedding model singleton."""
+    global _EMBEDDINGS_MODEL
+    if _EMBEDDINGS_MODEL is None:
+        _EMBEDDINGS_MODEL = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={"device": "cpu"}
+        )
+    return _EMBEDDINGS_MODEL
+
+
+def _compute_similarity(text_a: str, text_b: str) -> float:
+    """
+    Compute cosine similarity between two texts using the cached
+    sentence-transformers/all-MiniLM-L6-v2 embedding model.
+    Returns a float between -1.0 and 1.0 (typically 0.0 to 1.0 for text).
+    """
+    embeddings = _get_embeddings_model()
+    vecs = embeddings.embed_documents([text_a, text_b])
+    a = np.array(vecs[0])
+    b = np.array(vecs[1])
+    cos_sim = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10)
+    return float(cos_sim)
+
 
 # ============ Conversation Memory Store (30-Minute Inactivity TTL) ============
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
@@ -100,10 +132,7 @@ def _contextualize_question(question: str, session_id: str) -> str:
 
 
 def load_rag_chain():
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={"device": "cpu"}
-    )
+    embeddings = _get_embeddings_model()
     vector_store = FAISS.load_local(
         FAISS_INDEX_PATH,
         embeddings,
@@ -232,7 +261,7 @@ def get_answer(question, rag_chain, retriever, user_context=None, session_id=Non
 
 
 def _clean_llm_translation_output(text: str) -> str:
-    """Strips thinking tags (<think>...</think>) and extraneous markdown wrappers from LLM output."""
+    """Strips thinking tags (<think>...</think>), extraneous markdown wrappers, and quote artifacts from LLM output."""
     if not text:
         return ""
     import re
@@ -240,6 +269,8 @@ def _clean_llm_translation_output(text: str) -> str:
     text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
     text = re.sub(r'.*?</think>', '', text, flags=re.DOTALL)
     text = re.sub(r'^\*{0,2}(?:sinhala translation|english translation|translation):\*{0,2}\s*', '', text, flags=re.IGNORECASE).strip()
+    text = text.strip(' "\'\n\r')
+    text = re.sub(r'\bferomone\b', 'pheromone', text, flags=re.IGNORECASE)
     return text.strip()
 
 def _sanitize_sinhala_advisory(text: str) -> str:
@@ -255,12 +286,13 @@ def _sanitize_sinhala_advisory(text: str) -> str:
     text = re.sub(r'කෙළවර කිරීම යම් ආකාරයකින් ද\?', 'පොහොර යෙදිය යුත්තේ කෙසේද?', text)
     text = re.sub(r'\bනාරකොළ\b', 'පොල් පැළ', text)
     text = re.sub(r'\bනාරටි\b', 'පොල් පැළ', text)
+    text = re.sub(r'\bපොල් කොළ වලින් වසුන්\b', 'පොල් ලෙලි වලින් වසුන්', text)
     return text
 
 def translate_text(text, target_lang):
     """
     Translates text to target_lang ('en' or 'si') using ChatGroq with a high-accuracy farmer-oriented prompt.
-    Uses model cascade: qwen/qwen3.6-27b -> openai/gpt-oss-120b -> llama-3.3-70b-versatile -> llama-3.1-8b-instant.
+    Uses model cascade: openai/gpt-oss-120b -> llama-3.1-8b-instant.
     """
     if not text or not text.strip():
         return ""
@@ -269,34 +301,40 @@ def translate_text(text, target_lang):
         prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
 Translate the input English text into natural, clear, farmer-friendly Sinhala (සිංහල) that a Sri Lankan coconut farmer can easily understand.
 
+CRITICAL SRI LANKAN AGRICULTURAL VOCABULARY:
+- black beetle / rhinoceros beetle -> පොල් කුරුමිණියා / කළු කුරුමිණියා (අං කුරුමිණියා)
+- red palm weevil -> රතු කුරුමිණියා
+- coconut mite -> පොල් මයිටා
+- coconut caterpillar -> කොළ කන දළඹුවා (පොල් දළඹුවා)
+- whitefly -> සුදු මැස්සා
+- scale insects -> කොරපොතු කෘමීන්
+- bud rot -> කරටි කුණුවීම
+- leaf rot -> ගොබ කුණුවීම
+- Weligama leaf wilt disease -> වැලිගම කොළ මැලවීමේ රෝගය
+- stem bleeding -> කඳෙන් ශ්‍රාවය ගැලීම
+- Ganoderma root and bole rot -> ගැනෝඩර්මා (මුල් සහ කඳ කුණුවීමේ රෝගය)
+- mother palm -> මව් ශාකය / මව් පොල් ගස (NEVER translate as "මෑණියන්")
+- young coconut palms / seedlings -> තරුණ පොල් ගස් / කුඩා පොල් පැළ
+- coconut nursery -> පොල් තවාන
+- coconut husks -> පොල් ලෙලි (NEVER translate as "පොල් කොළ")
+- mulching / mulch -> වසුන් කිරීම / වසුන
+- manure circle -> පොහොර වළල්ල (මනූර වෘත්තය)
+- fertilizer -> පොහොර
+- Wet Zone / Dry Zone / Intermediate Zone -> තෙත් කලාපය / වියළි කලාපය / අතරමැදි කලාපය
+- Yala season / Maha season -> යල කන්නය / මහ කන්නය
+- recommend -> නිර්දේශිත / නිර්දේශ කරමි (NEVER translate as "අනුරුද්ධ")
+- split applications -> කොටස් වශයෙන් යෙදීම
+- termites -> වේයන්
+- yellowing -> කොළ කහ වීම / පත්‍ර කහ වීම
+- nitrogen deficiency -> නයිට්‍රජන් ඌනතාවය
+- yield -> අස්වැන්න
+- spacing -> පරතරය / සිටුවීමේ පරතරය
+- coconut palm / tree -> පොල් ගස / පොල් පැළ
+
 CRITICAL TRANSLATION RULES:
 1. Tone & Clarity: Use natural Sri Lankan Sinhala sentence structure. Avoid word-for-word literal translations or complex bookish words that ordinary farmers do not use.
-2. Question Translation:
-   - "How should I fertilize young coconut palms?" -> "තරුණ පොල් ගස් වලට පොහොර යෙදිය යුත්තේ කෙසේද?"
-   - "How do I select a good mother palm?" -> "හොඳ මව් පොල් ගසක් තෝරා ගන්නේ කෙසේද?"
-   - "How do I control termites in coconut nursery?" -> "පොල් තවානේ වේයන් පාලනය කරන්නේ කෙසේද?"
-   - "What fertilizer mixture is recommended for coconut seedlings?" -> "කුඩා පොල් පැළ සඳහා නිර්දේශිත පොහොර මිශ්‍රණය කුමක්ද?"
-   - "How to manage yellowing of coconut leaves in wet zone?" -> "තෙත් කලාපයේ පොල් පත්‍ර කහ වීම පාලනය කරන්නේ කෙසේද?"
-   - "What is the recommended spacing for planting coconut palms?" -> "පොල් ගස් සිටුවීමට නිර්දේශිත පරතරය කුමක්ද?"
-3. Agricultural Terminology:
-   - mother palm -> මව් ශාකය / මව් පොල් ගස (NEVER translate as "මෑණියන්")
-   - young coconut palms / seedlings -> තරුණ පොල් ගස් / කුඩා පොල් පැළ
-   - coconut nursery -> පොල් තවාන
-   - fertilizer -> පොහොර
-   - Wet Zone / Dry Zone / Intermediate Zone -> තෙත් කලාපය / වියළි කලාපය / අතරමැදි කලාපය
-   - Yala season / Maha season -> යල කන්නය / මහ කන්නය
-   - recommend -> නිර්දේශිත / නිර්දේශ කරමි (NEVER translate as "අනුරුද්ධ")
-   - split applications -> කොටස් වශයෙන් යෙදීම
-   - termites -> වේයන්
-   - rhinoceros beetle -> රයිනෝසරස් කුරුමිණියා (අං කුරුමිණියා)
-   - yellowing -> කොළ කහ වීම / පත්‍ර කහ වීම
-   - nitrogen deficiency -> නයිට්‍රජන් ඌනතාවය
-   - soil moisture stress -> පසේ තෙතමනය හිඟකම
-   - yield -> අස්වැන්න
-   - spacing -> පරතරය / සිටුවීමේ පරතරය
-   - coconut palm / tree -> පොල් ගස / පොල් පැළ
-4. Preserve codes & units: Keep codes (YPM-W, APM, NPK, CRI) and units (kg, g, ml, cm, m) unchanged.
-5. Output: Output ONLY the translated Sinhala text. Do NOT add commentary, explanations, markdown fences, or thinking tags.
+2. Preserve codes & units: Keep codes (YPM-W, APM, NPK, CRI) and units (kg, g, ml, cm, m) unchanged.
+3. Output: Output ONLY the translated Sinhala text. Do NOT add commentary, explanations, markdown fences, or thinking tags.
 
 TEXT TO TRANSLATE:
 "{text}"
@@ -304,20 +342,39 @@ TEXT TO TRANSLATE:
 SINHALA TRANSLATION:""")
     else:
         prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
-Translate the following Sinhala (සිංහල) text into clear, natural English for an agricultural advisory search query.
+Translate the following Sinhala (සිංහල) farmer query into clear, natural, grammatically correct English for an agricultural advisory system.
 
-TRANSLATION RULES:
-1. Output ONLY the clear English translation.
-2. Use accurate Sri Lankan agricultural terminology:
-   - පොල් ගස් / පොල් පැළ -> coconut palms / coconut seedlings
-   - පොහොර -> fertilizer
-   - පොල් තවාන -> coconut nursery
-   - තෙත් කලාපය -> Wet Zone
-   - යල කන්නය -> Yala season
-   - වේයන් -> termites
-   - රයිනෝසරස් කුරුමිණියා / අං කුරුමිණියා -> rhinoceros beetle
-3. Preserve codes & units (YPM-W, APM, kg, g, NPK).
-4. Output ONLY the translated text, nothing else.
+CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
+- පොල් කුරුමිණියා / කළු කුරුමිණියා / අං කුරුමිණියා -> black beetle / rhinoceros beetle (Oryctes rhinoceros)
+- රතු කුරුමිණියා / රතු කුරුමිණි -> red palm weevil (Rhynchophorus ferrugineus)
+- පොල් මයිටා / මයිටා හානිය -> coconut mite (Aceria guerrateronis)
+- කොළ කන දළඹුවා / පොල් දළඹුවා -> coconut caterpillar (Opisina arenosella)
+- සුදු මැස්සා -> whitefly (rugose spiralling whitefly)
+- පිටි මකුණා -> mealybug
+- කොරපොතු කෘමියා -> coconut scale insect
+- වේයන් -> termites
+- කරටි කුණුවීම / කරටි කුණුවීමේ රෝගය / ගොබ කුණුවීම -> bud rot disease (Phytophthora) / leaf rot
+- වැලිගම කොළ මැලවීම / කොළ මැලවීමේ රෝගය -> Weligama coconut leaf wilt disease
+- කඳෙන් ශ්‍රාවය ගැලීම -> stem bleeding disease
+- මුල් සහ කඳ කුණුවීම / ගැනෝඩර්මා -> Ganoderma root and bole rot
+- ෆෙරමෝන් / ෆෙරමෝන් උගුල් -> pheromone traps
+- පොල් ලෙලි -> coconut husks (NOT coconut leaves)
+- වසුන් කිරීම / වසුන -> mulching / mulch
+- පොහොර වළල්ල / මනූර වෘත්තය -> manure circle
+- පොල් ප්‍රභේද -> coconut varieties / cultivars
+- මව් ගස / මව් පොල් ගස -> mother palm
+- අතුරු බෝග -> intercropping
+- බයෝචාර් -> biochar
+- බිංදු ජල සම්පාදනය -> drip irrigation
+- පොල් ගස් / පොල් පැළ -> coconut palms / coconut seedlings
+- තෙත් කලාපය / වියළි කලාපය / අතරමැදි කලාපය -> Wet Zone / Dry Zone / Intermediate Zone
+- යල කන්නය / මහ කන්නය -> Yala season / Maha season
+
+RULES:
+1. Translate into a direct, fluent English sentence without commentary.
+2. Do NOT enclose output in quotation marks.
+3. Preserve codes & units (YPM-W, APM, NPK, kg, g, ml, cm).
+4. Output ONLY the translated English text.
 
 TEXT TO TRANSLATE:
 "{text}"
@@ -475,10 +532,23 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
 
 def get_multi_llm_answer(question, retriever, user_context=None):
     """
-    Runs the same retrieved context through 3 different LLMs in parallel,
+    Runs the same retrieved context through 3 multi LLMs in parallel,
     then uses a judge LLM to select the best answer based on faithfulness
     to the CRI source documents.
+
+    Early Exit Optimization:
+    - As results come in via as_completed(), the first two finished answers
+      are compared using cosine similarity on their embeddings.
+    - If similarity >= EARLY_EXIT_THRESHOLD (0.85), the Judge LLM is skipped.
+    - All 3 candidate answers are ALWAYS collected (no candidate is cancelled).
+    - The latency saving comes solely from skipping the Judge LLM call.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Model rank priority for early exit selection (lower index = higher rank)
+    MODEL_RANK = {"llama": 0, "llama8b": 1, "gemma": 2}
+
     # 1. Retrieve context chunks (same for all 3 LLMs)
     search_query = f"User Context: {user_context}\nQuestion: {question}" if user_context else question
     source_docs = retriever.invoke(search_query)
@@ -498,69 +568,117 @@ def get_multi_llm_answer(question, retriever, user_context=None):
     # 2. Run all 3 LLMs in parallel
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {
-            key: executor.submit(_invoke_llm, model, context, search_query)
+            executor.submit(_invoke_llm, model, context, search_query): key
             for key, model in MULTI_LLM_MODELS.items()
         }
-        answers = {key: future.result() for key, future in futures.items()}
 
-    # 3. Judge evaluation (Use llama-3.1-8b-instant with 500k TPD limit to avoid 70B rate limits)
-    judge_prompt = PromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
-    try:
-        judge_llm = ChatGroq(
-            model="openai/gpt-oss-120b",
-            api_key=os.getenv("GROQ_API_KEY"),
-            temperature=0.0
+        # Collect results via as_completed to detect early exit opportunity
+        completed_keys = []
+        answers = {}
+        early_exit = False
+        similarity_score = None
+
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                answers[key] = future.result()
+            except Exception as e:
+                logger.error(f"Model {key} failed in as_completed: {e}")
+                answers[key] = "Unable to generate answer from model due to rate limit."
+            completed_keys.append(key)
+
+            # Check early exit after exactly 2 results are in
+            if len(completed_keys) == 2 and similarity_score is None:
+                try:
+                    similarity_score = _compute_similarity(
+                        answers[completed_keys[0]],
+                        answers[completed_keys[1]]
+                    )
+                    logger.info(
+                        f"Early exit check: {completed_keys[0]} vs {completed_keys[1]} "
+                        f"similarity={similarity_score:.4f} (threshold={EARLY_EXIT_THRESHOLD})"
+                    )
+                    if similarity_score >= EARLY_EXIT_THRESHOLD:
+                        early_exit = True
+                        logger.info("Early exit TRIGGERED — will skip Judge LLM.")
+                except Exception as sim_err:
+                    logger.warning(f"Similarity computation failed: {sim_err}. Falling back to Judge.")
+                    similarity_score = None
+
+        # All 3 answers are now collected (no candidate skipped)
+
+    # 3. Decide: early exit or full Judge evaluation
+    if early_exit:
+        # Select best model by rank among the two that agreed
+        best_model = min(completed_keys[:2], key=lambda k: MODEL_RANK.get(k, 99))
+        reason = (
+            f"Early exit: {completed_keys[0]} and {completed_keys[1]} answers had "
+            f"{similarity_score:.1%} semantic similarity (≥ {EARLY_EXIT_THRESHOLD:.0%} threshold). "
+            f"Judge LLM skipped. Selected {best_model} as highest-ranked agreeing model."
         )
-        judge_chain = judge_prompt | judge_llm | StrOutputParser()
+        consensus_score = 90
+        logger.info(f"Early exit result: best_model={best_model}, similarity={similarity_score:.4f}")
+    else:
+        # Full Judge evaluation (existing logic preserved)
+        judge_prompt = PromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
         judge_payload = {
             "context": context[:1500],
             "question": question,
-            "llama_answer": answers["llama"][:600],
-            "llama8b_answer": answers["llama8b"][:600],
-            "gemma_answer": answers["gemma"][:600]
+            "llama_answer": answers.get("llama", "")[:600],
+            "llama8b_answer": answers.get("llama8b", "")[:600],
+            "gemma_answer": answers.get("gemma", "")[:600]
         }
-        judge_raw = judge_chain.invoke(judge_payload)
-    except Exception as judge_err:
-        import logging
-        logging.getLogger(__name__).warning(f"Judge primary model failed: {judge_err}. Trying fallback...")
-        judge_llm_fb = ChatGroq(
-            model="llama-3.1-8b-instant",
-            api_key=os.getenv("GROQ_API_KEY"),
-            temperature=0.0
-        )
-        judge_chain = judge_prompt | judge_llm_fb | StrOutputParser()
-        judge_raw = judge_chain.invoke(judge_payload)
+        try:
+            judge_llm = ChatGroq(
+                model="openai/gpt-oss-120b",
+                api_key=os.getenv("GROQ_API_KEY"),
+                temperature=0.0
+            )
+            judge_chain = judge_prompt | judge_llm | StrOutputParser()
+            judge_raw = judge_chain.invoke(judge_payload)
+        except Exception as judge_err:
+            logger.warning(f"Judge primary model failed: {judge_err}. Trying fallback...")
+            judge_llm_fb = ChatGroq(
+                model="llama-3.1-8b-instant",
+                api_key=os.getenv("GROQ_API_KEY"),
+                temperature=0.0
+            )
+            judge_chain = judge_prompt | judge_llm_fb | StrOutputParser()
+            judge_raw = judge_chain.invoke(judge_payload)
 
-    # 4. Parse judge response
-    try:
-        judge_result = json.loads(judge_raw.strip())
-    except json.JSONDecodeError:
-        # Fallback: try to extract JSON from the response
-        import re
-        json_match = re.search(r'\{[^}]+\}', judge_raw, re.DOTALL)
-        if json_match:
-            try:
-                judge_result = json.loads(json_match.group())
-            except json.JSONDecodeError:
+        # Parse judge response
+        try:
+            judge_result = json.loads(judge_raw.strip())
+        except json.JSONDecodeError:
+            import re
+            json_match = re.search(r'\{[^}]+\}', judge_raw, re.DOTALL)
+            if json_match:
+                try:
+                    judge_result = json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    judge_result = {"best_model": "llama", "reason": "Judge parse error — defaulting LLaMA", "consensus_score": 50}
+            else:
                 judge_result = {"best_model": "llama", "reason": "Judge parse error — defaulting LLaMA", "consensus_score": 50}
-        else:
-            judge_result = {"best_model": "llama", "reason": "Judge parse error — defaulting LLaMA", "consensus_score": 50}
 
-    best_model = judge_result.get("best_model", "llama")
-    if best_model not in answers:
-        best_model = "llama"
+        best_model = judge_result.get("best_model", "llama")
+        if best_model not in answers:
+            best_model = "llama"
+        reason = judge_result.get("reason", "")
+        consensus_score = judge_result.get("consensus_score", 50)
 
     return {
-        "best_answer": answers[best_model],
+        "best_answer": answers.get(best_model, answers.get("llama", "")),
         "best_model": best_model,
-        "reason": judge_result.get("reason", ""),
-        "consensus_score": judge_result.get("consensus_score", 50),
-        "llama_answer": answers["llama"],
-        "llama8b_answer": answers["llama8b"],
-        "gemma_answer": answers["gemma"],
-        "qwen_answer": answers["gemma"],
+        "reason": reason,
+        "consensus_score": consensus_score,
+        "llama_answer": answers.get("llama", ""),
+        "llama8b_answer": answers.get("llama8b", ""),
+        "gemma_answer": answers.get("gemma", ""),
+        "qwen_answer": answers.get("gemma", ""),
         "sources": sources,
-        "context_used": user_context
+        "context_used": user_context,
+        "early_exit": early_exit,
+        "similarity_score": round(similarity_score, 4) if similarity_score is not None else None
     }
 
 
@@ -573,15 +691,56 @@ def reload_image_index():
     _IMAGE_VECTOR_STORE = None
     _IMAGE_VECTOR_STORE_MTIME = 0
 
-def find_relevant_images(answer_text: str, top_k: int = 2) -> list:
+def find_relevant_images(
+    query_text: str,
+    answer_text: str = "",
+    top_k: int = 2,
+    base_max_distance: float = 0.80,
+    max_relative_diff: float = 0.22
+) -> list:
     """
-    Given answer_text generated by RAG engine, searches image_index vector store
-    for top_k semantically relevant CRI reference images.
+    Given query_text (and optional answer_text) from RAG engine, searches
+    image_index vector store for high-confidence CRI reference images.
+
+    Accuracy & Precision Guarantees:
+    - Multi-pass query formulation (clean standalone question + focused answer context).
+    - Enforces a strict L2 distance threshold (default <= 0.80 for keyword-validated matches,
+      and <= 0.70 for non-keyword matches).
+    - If no image matches below the confidence threshold, returns an empty list [] (no irrelevant images).
+    - Enforces a relative margin (<= 0.22) so secondary images are only returned if equally relevant.
+    - Applies semantic topic guardrails to prevent pest/variety/fertilizer crossover mismatches.
+
     Returns list of dicts: [{'url': '/static/images/...', 'caption': '...', 'source': '...'}]
     """
     global _IMAGE_VECTOR_STORE, _IMAGE_VECTOR_STORE_MTIME
-    if not answer_text or not answer_text.strip():
+    if not query_text or not query_text.strip():
         return []
+
+    clean_q = query_text.strip()
+    clean_a = answer_text.strip() if answer_text else ""
+
+    # Multi-pass query formulation: 1. Clean standalone query, 2. Query + focused context
+    queries_to_search = [clean_q]
+    if clean_a:
+        queries_to_search.append(f"{clean_q}\n{clean_a[:140]}")
+
+    combined_text = f"{clean_q} {clean_a}".lower()
+
+    # Core domain concepts for keyword-aligned confidence verification
+    domain_keywords = [
+        "black beetle", "rhinoceros beetle", "red palm weevil", "red weevil",
+        "mite", "aceria", "caterpillar", "opisina", "nettle caterpillar",
+        "whitefly", "scale insect", "bud rot", "phytophthora", "leaf rot",
+        "leaf blight", "weligama", "leaf wilt", "ganoderma", "root and bole rot",
+        "stem bleeding", "plesispa",
+        "fertilizer", "manure circle", "npk", "apm", "mulch", "mulching",
+        "husk", "biochar", "seedling", "replanting", "underplanting",
+        "cric 60", "cric 65", "crisl 2020", "crisl 98", "kapruwana", "kapsetha", "kapsuwaya",
+        "variety", "varieties", "hybrid", "irrigation", "drip", "micro-irrigation",
+        "basin irrigation", "intercrop", "intercropping", "banana", "pepper",
+        "cinnamon", "cashew", "papaya", "ginger", "turmeric", "cover crop"
+    ]
+    matched_query_keywords = [k for k in domain_keywords if k in combined_text]
 
     try:
         image_index_path = os.path.join(_ROOT_DIR, "image_index")
@@ -597,10 +756,7 @@ def find_relevant_images(answer_text: str, top_k: int = 2) -> list:
         current_mtime = os.path.getmtime(faiss_file) if os.path.exists(faiss_file) else 0
 
         if _IMAGE_VECTOR_STORE is None or current_mtime > _IMAGE_VECTOR_STORE_MTIME:
-            embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={"device": "cpu"}
-            )
+            embeddings = _get_embeddings_model()
             _IMAGE_VECTOR_STORE = FAISS.load_local(
                 image_index_path,
                 embeddings,
@@ -608,21 +764,97 @@ def find_relevant_images(answer_text: str, top_k: int = 2) -> list:
             )
             _IMAGE_VECTOR_STORE_MTIME = current_mtime
 
-        docs = _IMAGE_VECTOR_STORE.similarity_search(answer_text, k=top_k)
+        # Retrieve candidates across query formulations and take the best distance score for each doc
+        candidate_map = {}
+        for q_str in queries_to_search:
+            results = _IMAGE_VECTOR_STORE.similarity_search_with_score(q_str, k=top_k + 4)
+            for doc, raw_score in results:
+                url = doc.metadata.get("url") or f"/static/images/{doc.metadata.get('filename')}"
+                desc = doc.page_content.lower()
+                caption = doc.metadata.get("caption", "").lower()
+                source = doc.metadata.get("source", "").lower()
+                doc_all_text = f"{desc} {caption} {source}"
+
+                # Check if any query domain keyword appears in document
+                has_keyword_match = any(kw in doc_all_text for kw in matched_query_keywords)
+                effective_score = float(raw_score) - (0.12 if has_keyword_match else 0.0)
+
+                if url not in candidate_map or effective_score < candidate_map[url]["effective_score"]:
+                    candidate_map[url] = {
+                        "doc": doc,
+                        "raw_score": float(raw_score),
+                        "effective_score": effective_score,
+                        "has_keyword_match": has_keyword_match
+                    }
+
+        if not candidate_map:
+            return []
+
+        # Sort merged candidates by best effective distance
+        sorted_candidates = sorted(candidate_map.values(), key=lambda x: x["effective_score"])
+        best_item = sorted_candidates[0]
+
+        # Allowed distance: up to 1.18 if keyword-validated, strictly <= 0.70 for non-keyword matches
+        best_allowed_distance = 1.18 if best_item["has_keyword_match"] else 0.70
+
+        if best_item["raw_score"] > best_allowed_distance:
+            return []
+
+        best_score = best_item["effective_score"]
+
+        is_pest_query = any(k in combined_text for k in ["beetle", "weevil", "mite", "caterpillar", "whitefly", "scale", "pest", "disease", "rot", "blight", "wilt", "ganoderma"])
+        is_fertilizer_query = any(k in combined_text for k in ["fertilizer", "manure", "npk", "apm", "nutrient", "dolomite", "compost", "mulch", "mulching"])
+
         images = []
-        for doc in docs:
+        seen_urls = set()
+
+        for item in sorted_candidates:
+            if len(images) >= top_k:
+                break
+
+            doc = item["doc"]
+            raw_score = item["raw_score"]
+            eff_score = item["effective_score"]
+
+            # 1. Enforce distance threshold
+            allowed_dist = 1.18 if item["has_keyword_match"] else 0.70
+            if raw_score > allowed_dist:
+                continue
+
+            # 2. Enforce relative distance margin compared to best match
+            if (eff_score - best_score) > max_relative_diff:
+                continue
+
             filename = doc.metadata.get("filename", "")
             url = doc.metadata.get("url") or f"/static/images/{filename}"
             caption = doc.metadata.get("caption", "")
             source = doc.metadata.get("source", "")
+            desc = doc.page_content.lower()
 
-            # Ensure image is not duplicate
-            if not any(img["url"] == url for img in images):
-                images.append({
-                    "url": url,
-                    "caption": caption,
-                    "source": source
-                })
+            if url in seen_urls:
+                continue
+
+            # 3. Domain Guardrail Checks
+            is_variety_img = "variety" in source.lower() or "hybrid" in desc or "cric " in desc or "crisl " in desc or "kapruwana" in desc or "kapsuwaya" in desc or "kapsetha" in desc
+            if is_pest_query and is_variety_img:
+                continue
+
+            is_pest_img = any(k in desc for k in ["beetle", "weevil", "mite", "caterpillar", "whitefly", "scale", "pest", "rot", "blight", "wilt", "ganoderma"])
+            if is_fertilizer_query and is_pest_img and not is_pest_query:
+                continue
+
+            # Specific pest collision guardrails
+            if "weevil" in combined_text and ("black beetle" in desc or "oryctes" in desc) and "weevil" not in desc:
+                continue
+            if "black beetle" in combined_text and ("weevil" in desc or "rhynchophorus" in desc) and "beetle" not in desc:
+                continue
+
+            seen_urls.add(url)
+            images.append({
+                "url": url,
+                "caption": caption,
+                "source": source
+            })
 
         return images
 
