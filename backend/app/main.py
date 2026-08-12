@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 import os
+import time
 import asyncio
 from dotenv import load_dotenv
 import logging
@@ -170,8 +171,12 @@ class MultiLLMResponse(BaseModel):
     gemma_answer: Optional[str] = None
     qwen_answer: Optional[str] = None
     sources: List[SourceDocument]
+    images: Optional[List[ImageReference]] = []
     zone: Optional[str] = None
     season: Optional[str] = None
+    early_exit: bool = False
+    similarity_score: Optional[float] = None
+    latency_ms: Optional[int] = None
 
 
 # ============ Helper: Server-side zone/season detection ============
@@ -306,9 +311,8 @@ async def ask_question(request: QuestionRequest):
             for source in result.get("sources", [])
         ]
 
-        # Find top 2 semantically relevant CRI reference images using question + answer context
-        search_query = f"{rag_question}\n{result['answer'][:400]}"
-        raw_images = await asyncio.to_thread(find_relevant_images, search_query, top_k=2)
+        # Find semantically relevant CRI reference images using question + answer context
+        raw_images = await asyncio.to_thread(find_relevant_images, rag_question, result.get("answer", ""), top_k=2)
         images = [
             ImageReference(
                 url=img["url"],
@@ -435,9 +439,11 @@ async def ask_multi_llm(request: MultiLLMRequest):
         logger.info(f"Multi-LLM query: {rag_question} (Lang: {user_lang}) | Context: {user_context}")
 
         # Run multi-LLM validation (parallel execution inside)
+        start_time = time.time()
         result = await asyncio.to_thread(
             get_multi_llm_answer, rag_question, retriever, user_context
         )
+        latency_ms = int((time.time() - start_time) * 1000)
 
         # Extract fields
         best_answer = result["best_answer"]
@@ -445,6 +451,8 @@ async def ask_multi_llm(request: MultiLLMRequest):
         llama8b_answer = result["llama8b_answer"]
         gemma_answer = result.get("gemma_answer") or result.get("qwen_answer", "")
         reason = result["reason"]
+        early_exit = result.get("early_exit", False)
+        similarity_score = result.get("similarity_score", None)
 
         # Post-translate answers back to Sinhala if requested
         if user_lang == "si":
@@ -477,6 +485,17 @@ async def ask_multi_llm(request: MultiLLMRequest):
             for s in result.get("sources", [])
         ]
 
+        # Find semantically relevant CRI reference images using question + best_answer context
+        raw_images = await asyncio.to_thread(find_relevant_images, rag_question, result.get("best_answer", ""), top_k=2)
+        images = [
+            ImageReference(
+                url=img["url"],
+                caption=img["caption"],
+                source=img["source"]
+            )
+            for img in raw_images
+        ]
+
         return MultiLLMResponse(
             success=True,
             best_answer=best_answer,
@@ -488,8 +507,12 @@ async def ask_multi_llm(request: MultiLLMRequest):
             gemma_answer=gemma_answer,
             qwen_answer=gemma_answer,
             sources=sources,
+            images=images,
             zone=zone,
-            season=f"{season} ({month})"
+            season=f"{season} ({month})",
+            early_exit=early_exit,
+            similarity_score=similarity_score,
+            latency_ms=latency_ms
         )
 
     except Exception as e:
