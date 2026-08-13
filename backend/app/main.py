@@ -22,7 +22,7 @@ import uuid
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images
+from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_tamil
 
 # Load environment variables
 load_dotenv()
@@ -101,7 +101,7 @@ class QuestionRequest(BaseModel):
     )
     question: str
     context: Optional[str] = None
-    language: Optional[str] = 'en'
+    language: Optional[str] = 'en'  # 'en', 'si', or 'ta'
     session_id: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -250,14 +250,14 @@ async def ask_question(request: QuestionRequest):
     try:
         logger.info(f"Processing question for session [{session_id}]: {question} (Lang: {user_lang})")
         
-        # Helper to check for Sinhala characters
-        def is_sinhala(text: str) -> bool:
-            return any('\u0d80' <= char <= '\u0dff' for char in text)
+        # Detect input language using unified detection
+        detected_lang = get_language(question)
         
-        # Translate question to English if it is in Sinhala
+        # Translate question to English if it is in Sinhala or Tamil
         rag_question = question
-        if is_sinhala(question):
-            logger.info("Sinhala question detected. Translating to English for RAG...")
+        if detected_lang in ('si', 'ta'):
+            lang_name = 'Sinhala' if detected_lang == 'si' else 'Tamil'
+            logger.info(f"{lang_name} question detected. Translating to English for RAG...")
             try:
                 rag_question = await asyncio.to_thread(translate_text, question, "en")
                 logger.info(f"Translated question: {rag_question}")
@@ -287,18 +287,19 @@ async def ask_question(request: QuestionRequest):
             user_context=user_context
         )
         
-        # Translate the answer back to Sinhala if Sinhala is requested
+        # Translate the answer back to target language if non-English
         answer = result["answer"]
         display_question = question
-        if user_lang == "si":
-            logger.info("Translating answer to Sinhala...")
+        if user_lang in ("si", "ta"):
+            lang_name = 'Sinhala' if user_lang == 'si' else 'Tamil'
+            logger.info(f"Translating answer to {lang_name}...")
             try:
-                answer = await asyncio.to_thread(translate_text, answer, "si")
-                if not is_sinhala(question):
-                    display_question = await asyncio.to_thread(translate_text, question, "si")
-                logger.info("Answer and question successfully translated to Sinhala.")
+                answer = await asyncio.to_thread(translate_text, answer, user_lang)
+                if detected_lang == 'en':
+                    display_question = await asyncio.to_thread(translate_text, question, user_lang)
+                logger.info(f"Answer and question successfully translated to {lang_name}.")
             except Exception as e:
-                logger.error(f"Error translating answer to Sinhala: {str(e)}")
+                logger.error(f"Error translating answer to {lang_name}: {str(e)}")
                 # Fallback to original English answer
         
         # Format sources
@@ -356,8 +357,8 @@ async def translate_batch(request: TranslateBatchRequest):
         from concurrent.futures import ThreadPoolExecutor
         
         target_lang = request.target_lang.strip()
-        if target_lang not in ["en", "si"]:
-            raise HTTPException(status_code=400, detail="Invalid target language. Must be 'en' or 'si'")
+        if target_lang not in ["en", "si", "ta"]:
+            raise HTTPException(status_code=400, detail="Invalid target language. Must be 'en', 'si', or 'ta'")
             
         logger.info(f"Batch translating {len(request.messages)} messages to {target_lang}")
         
@@ -407,14 +408,14 @@ async def ask_multi_llm(request: MultiLLMRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
-        # Helper to check for Sinhala characters
-        def is_sinhala(text: str) -> bool:
-            return any('\u0d80' <= char <= '\u0dff' for char in text)
+        # Detect input language using unified detection
+        detected_lang = get_language(question)
 
-        # Pre-translate query to English if Sinhala
+        # Pre-translate query to English if Sinhala or Tamil
         rag_question = question
-        if is_sinhala(question):
-            logger.info("Sinhala multi-LLM question detected. Translating to English for RAG...")
+        if detected_lang in ('si', 'ta'):
+            lang_name = 'Sinhala' if detected_lang == 'si' else 'Tamil'
+            logger.info(f"{lang_name} multi-LLM question detected. Translating to English for RAG...")
             try:
                 rag_question = await asyncio.to_thread(translate_text, question, "en")
                 logger.info(f"Translated multi-LLM question: {rag_question}")
@@ -454,9 +455,10 @@ async def ask_multi_llm(request: MultiLLMRequest):
         early_exit = result.get("early_exit", False)
         similarity_score = result.get("similarity_score", None)
 
-        # Post-translate answers back to Sinhala if requested
-        if user_lang == "si":
-            logger.info("Translating all Multi-LLM response fields to Sinhala...")
+        # Post-translate answers back to Sinhala or Tamil if requested
+        if user_lang in ("si", "ta"):
+            lang_name = 'Sinhala' if user_lang == 'si' else 'Tamil'
+            logger.info(f"Translating all Multi-LLM response fields to {lang_name}...")
             payload_to_translate = {
                 "best_answer": best_answer,
                 "reason": reason,
@@ -465,15 +467,15 @@ async def ask_multi_llm(request: MultiLLMRequest):
                 "gemma_answer": gemma_answer
             }
             try:
-                translated_dict = await asyncio.to_thread(translate_multi_llm_payload, payload_to_translate, target_lang="si")
+                translated_dict = await asyncio.to_thread(translate_multi_llm_payload, payload_to_translate, target_lang=user_lang)
                 best_answer = translated_dict.get("best_answer", best_answer)
                 reason = translated_dict.get("reason", reason)
                 llama_answer = translated_dict.get("llama_answer", llama_answer)
                 llama8b_answer = translated_dict.get("llama8b_answer", llama8b_answer)
                 gemma_answer = translated_dict.get("gemma_answer", gemma_answer)
-                logger.info("Multi-LLM response fields successfully translated to Sinhala.")
+                logger.info(f"Multi-LLM response fields successfully translated to {lang_name}.")
             except Exception as e:
-                logger.error(f"Error translating Multi-LLM payload to Sinhala: {e}")
+                logger.error(f"Error translating Multi-LLM payload to {lang_name}: {e}")
 
         # Format sources
         sources = [
@@ -612,6 +614,11 @@ async def text_to_speech(text: str, lang: str = "en"):
         # Normalize Sinhala Unicode conjuncts and retroflex characters
         cleaned_text = normalize_sinhala_for_tts(cleaned_text)
         # Add pronunciation hints for English terms in Sinhala text
+        cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
+    elif lang.lower() == "ta":
+        voice = "ta-LK-KumarNeural"  # Sri Lankan Tamil voice
+        rate = "-10%"   # Slower rate for clear Tamil articulation
+        # Add pronunciation hints for English terms in Tamil text (same pattern as Sinhala)
         cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
     else:
         voice = "en-US-AriaNeural"
