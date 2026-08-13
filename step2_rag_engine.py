@@ -273,6 +273,29 @@ def _clean_llm_translation_output(text: str) -> str:
     text = re.sub(r'\bferomone\b', 'pheromone', text, flags=re.IGNORECASE)
     return text.strip()
 
+
+def is_sinhala(text: str) -> bool:
+    """Detect Sinhala characters in text (Unicode range U+0D80 to U+0DFF)."""
+    return any('\u0d80' <= char <= '\u0dff' for char in text)
+
+
+def is_tamil(text: str) -> bool:
+    """Detect Tamil characters in text (Unicode range U+0B80 to U+0BFF)."""
+    return any('\u0b80' <= char <= '\u0bff' for char in text)
+
+
+def get_language(text: str) -> str:
+    """
+    Unified language detection: returns 'si', 'ta', or 'en'.
+    Checks Sinhala first, then Tamil, defaults to English.
+    """
+    if is_sinhala(text):
+        return 'si'
+    if is_tamil(text):
+        return 'ta'
+    return 'en'
+
+
 def _sanitize_sinhala_advisory(text: str) -> str:
     """Post-processing sanitizer to fix common LLM Sinhala translation artifacts."""
     if not text:
@@ -289,9 +312,41 @@ def _sanitize_sinhala_advisory(text: str) -> str:
     text = re.sub(r'\bපොල් කොළ වලින් වසුන්\b', 'පොල් ලෙලි වලින් වසුන්', text)
     return text
 
+
+def _sanitize_tamil_advisory(text: str) -> str:
+    """Post-processing sanitizer to fix common LLM Tamil translation artifacts."""
+    if not text:
+        return ""
+    import re
+    # Fix common LLM Tamil mistranslations in agricultural context
+    # 'recommend' sometimes mistranslated to formal/bookish Tamil
+    text = re.sub(r'\bபரிந்துரைக்கப்பட்டது\b', 'பரிந்துரை', text)
+    # Fix coconut husk mistranslation (sometimes rendered as coconut leaf)
+    text = re.sub(r'\bதேங்காய் இலைகள் மூலம் மூடுதல்\b', 'தேங்காய் நார் மூலம் மூடுதல்', text)
+    # Fix mother palm mistranslation
+    text = re.sub(r'\bஅம்மா பனை\b', 'தாய் பனை', text)
+    # Fix seedling mistranslation
+    text = re.sub(r'\bவிதைப்பு செடி\b', 'தைல் கன்று', text)
+    return text
+
+
+def _clean_tamil_translation_output(text: str) -> str:
+    """Strips thinking tags and conversational artifacts from Tamil LLM output."""
+    if not text:
+        return ""
+    import re
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
+    text = re.sub(r'.*?</think>', '', text, flags=re.DOTALL)
+    text = re.sub(r'^\*{0,2}(?:tamil translation|english translation|translation):\*{0,2}\s*', '', text, flags=re.IGNORECASE).strip()
+    text = text.strip(' "\'\n\r')
+    text = re.sub(r'\bferomone\b', 'pheromone', text, flags=re.IGNORECASE)
+    return text.strip()
+
+
 def translate_text(text, target_lang):
     """
-    Translates text to target_lang ('en' or 'si') using ChatGroq with a high-accuracy farmer-oriented prompt.
+    Translates text to target_lang ('en', 'si', or 'ta') using ChatGroq with a high-accuracy farmer-oriented prompt.
     Uses model cascade: openai/gpt-oss-120b -> llama-3.1-8b-instant.
     """
     if not text or not text.strip():
@@ -340,8 +395,99 @@ TEXT TO TRANSLATE:
 "{text}"
 
 SINHALA TRANSLATION:""")
-    else:
+    elif target_lang == "ta":
         prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
+Translate the input English text into natural, clear, farmer-friendly Tamil (தமிழ்) that a Sri Lankan coconut farmer can easily understand.
+
+CRITICAL SRI LANKAN AGRICULTURAL VOCABULARY:
+- mother palm -> தாய் பனை
+- fertilizer -> உரம்
+- seedling -> தைல் கன்று
+- coconut -> தேங்காய்
+- Yala season -> யாழ் பருவம்
+- Maha season -> மஹா பருவம்
+- wet zone -> ஈர மண்டலம்
+- dry zone -> வறண்ட மண்டலம்
+- intermediate zone -> இடைநிலை மண்டலம்
+- pest -> பூச்சி
+- disease -> நோய்
+- soil -> மண்
+- planting -> நடவு
+- harvest -> அறுவடை
+- nursery -> நாற்றங்கால்
+- black beetle / rhinoceros beetle -> கருப்பு வண்டு / காண்டாமிரு வண்டு
+- red palm weevil -> சிவப்பு பனை நாவாய்ப்பூச்சி
+- coconut mite -> தேங்காய் பூச்சி
+- bud rot -> குருத்து அழுகல்
+- leaf rot -> இலை அழுகல்
+- stem bleeding -> தண்டு வடிதல்
+- manure circle -> உர வட்டம்
+- mulching -> மூடாக்கிடுதல்
+- coconut husk -> தேங்காய் நார்
+- intercropping -> ஊடுபயிர்
+- pheromone trap -> பெரோமோன் பொறி
+- recommend -> பரிந்துரை
+- yield -> விளைச்சல்
+- spacing -> இடைவெளி
+- coconut palm -> தேங்காய் மரம்
+
+CRITICAL TRANSLATION RULES:
+1. Tone & Clarity: Use natural Sri Lankan Tamil sentence structure. Avoid word-for-word literal translations or complex literary words.
+2. Preserve codes & units: Keep codes (YPM-W, APM, NPK, CRI) and units (kg, g, ml, cm, m) unchanged.
+3. Output: Output ONLY the translated Tamil text. Do NOT add commentary, explanations, markdown fences, or thinking tags.
+
+TEXT TO TRANSLATE:
+"{text}"
+
+TAMIL TRANSLATION:""")
+    else:
+        # Detect source language for -> English translation
+        detected_lang = get_language(text)
+        if detected_lang == 'ta':
+            prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
+Translate the following Tamil (தமிழ்) farmer query into clear, natural, grammatically correct English for an agricultural advisory system.
+
+CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
+- தாய் பனை -> mother palm
+- உரம் -> fertilizer
+- தைல் கன்று -> seedling
+- தேங்காய் -> coconut
+- யாழ் பருவம் -> Yala season
+- மஹா பருவம் -> Maha season
+- ஈர மண்டலம் -> Wet Zone
+- வறண்ட மண்டலம் -> Dry Zone
+- இடைநிலை மண்டலம் -> Intermediate Zone
+- பூச்சி -> pest
+- நோய் -> disease
+- மண் -> soil
+- நடவு -> planting
+- அறுவடை -> harvest
+- நாற்றங்கால் -> nursery
+- கருப்பு வண்டு / காண்டாமிரு வண்டு -> black beetle / rhinoceros beetle
+- சிவப்பு பனை நாவாய்ப்பூச்சி -> red palm weevil
+- தேங்காய் பூச்சி -> coconut mite
+- குருத்து அழுகல் -> bud rot
+- இலை அழுகல் -> leaf rot
+- தண்டு வடிதல் -> stem bleeding
+- உர வட்டம் -> manure circle
+- மூடாக்கிடுதல் -> mulching
+- தேங்காய் நார் -> coconut husk
+- ஊடுபயிர் -> intercropping
+- பெரோமோன் பொறி -> pheromone trap
+- விளைச்சல் -> yield
+
+RULES:
+1. Translate into a direct, fluent English sentence without commentary.
+2. Do NOT enclose output in quotation marks.
+3. Preserve codes & units (YPM-W, APM, NPK, kg, g, ml, cm).
+4. Output ONLY the translated English text.
+
+TEXT TO TRANSLATE:
+"{text}"
+
+ENGLISH TRANSLATION:""")
+        else:
+            prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
 Translate the following Sinhala (සිංහල) farmer query into clear, natural, grammatically correct English for an agricultural advisory system.
 
 CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
@@ -399,6 +545,9 @@ ENGLISH TRANSLATION:""")
             cleaned_res = _clean_llm_translation_output(res)
             if target_lang == "si":
                 cleaned_res = _sanitize_sinhala_advisory(cleaned_res)
+            elif target_lang == "ta":
+                cleaned_res = _clean_tamil_translation_output(cleaned_res)
+                cleaned_res = _sanitize_tamil_advisory(cleaned_res)
             if cleaned_res:
                 return cleaned_res
         except Exception as e:
