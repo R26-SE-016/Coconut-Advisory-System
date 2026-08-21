@@ -1,0 +1,1156 @@
+{
+  "timestamp": "2026-08-21T03:44:46.288233+00:00",
+  "evaluation_name": "SaruPol RAG Retrieval Evaluation (Semantic Relevance Scoring)",
+  "configuration": {
+    "evaluation_method": "Semantic Relevance Judgement (Cosine Similarity)",
+    "semantic_similarity_threshold": 0.65,
+    "retrieval_k": 4,
+    "benchmark_pool_k": 20,
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "vector_store": "FAISS",
+    "total_questions": 20
+  },
+  "summary": {
+    "total_questions": 20,
+    "average_precision_at_4": 0.625,
+    "average_recall_at_4": 0.7385,
+    "perfect_precision_count": 9,
+    "high_precision_count": 11,
+    "low_precision_count": 6
+  },
+  "detailed_results": [
+    {
+      "id": 1,
+      "question": "What fertilizer should I apply when planting coconut?",
+      "short_title": "Fertilizer at planting",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.2,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 20,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7695,
+          "is_relevant": true,
+          "preview": "21 Fertilizer Recommendations for King Coconut The same fertilizer recommendations given above can b",
+          "matched_keywords": [
+            "urea",
+            "phosphate",
+            "potash",
+            "dolomite",
+            "rock phosphate",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7665,
+          "is_relevant": true,
+          "preview": "60 150 180 230 290 4. Other fertilizers for young coconut palms with Gliricidia Nutrient Source of F",
+          "matched_keywords": [
+            "phosphate",
+            "potash",
+            "dolomite",
+            "rock phosphate",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.7604,
+          "is_relevant": true,
+          "preview": "Nutrient Source of Fertilizer Age of the coconut plant 6 Months 1 Year 2 Years 3 Years 4 Years up  t",
+          "matched_keywords": [
+            "phosphate",
+            "potash",
+            "dolomite",
+            "rock phosphate",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.7563,
+          "is_relevant": true,
+          "preview": "18 2. Other fertilizers for young coconut palms with goat manure Nutrient Source of Fertilizer Age o",
+          "matched_keywords": [
+            "phosphate",
+            "potash",
+            "dolomite",
+            "rock phosphate",
+            "fertilizer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "question": "How do I select a good mother palm?",
+      "short_title": "Mother palm selection",
+      "precision_at_4": 0.0,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 0,
+      "k": 4,
+      "total_relevant_in_top20": 0,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.4734,
+          "is_relevant": false,
+          "preview": "9 Selection of Coconut Cultivars for Establishing a Coconut Plantation  The coconut palm is a perenn",
+          "matched_keywords": [
+            "selection"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.4732,
+          "is_relevant": false,
+          "preview": "nitrogen, and phosphorus for a vegetative growth. An adult palm (bearing palms) requires potassium a",
+          "matched_keywords": [
+            "yield"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.47,
+          "is_relevant": false,
+          "preview": "correction of nutrient deficiency of palms at an early stage. Additionally, this also prevents ferti",
+          "matched_keywords": [
+            "selection"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.4591,
+          "is_relevant": false,
+          "preview": "41 Control Methods •\t An integrated pest management is essential to control this pest. 1.\t Agronomic",
+          "matched_keywords": [
+            "trunk"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "question": "What is the recommended planting density for coconut?",
+      "short_title": "Planting density",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.2,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 20,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7811,
+          "is_relevant": true,
+          "preview": "12 Establishing a Coconut Plantation Seedling density at coconut planting When planting coconut as a",
+          "matched_keywords": [
+            "density",
+            "spacing"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7498,
+          "is_relevant": true,
+          "preview": "Planting Methods – New or replanted coconut stands having abundant  sunlight are suitable. The dimen",
+          "matched_keywords": []
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.7456,
+          "is_relevant": true,
+          "preview": "plant density, adopting appropriate spacing for mono/intercropping, and following other recommended ",
+          "matched_keywords": [
+            "density",
+            "spacing",
+            "palms"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.7409,
+          "is_relevant": true,
+          "preview": "•\t Wet Zone\t \t : Rainfall in the wet zone is sufficient for coconut cultivation",
+          "matched_keywords": []
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "question": "How do I control termites in coconut nursery?",
+      "short_title": "Termite control in nursery",
+      "precision_at_4": 0.5,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 2,
+      "k": 4,
+      "total_relevant_in_top20": 2,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.6787,
+          "is_relevant": true,
+          "preview": "out. •\t Damage is high in clay soil. •\t Another termite species damages the roots and base of mature",
+          "matched_keywords": [
+            "termite",
+            "pest"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.6605,
+          "is_relevant": true,
+          "preview": "57 Control Methods •\t Demolition and removal of termitaries from the field. •\t Keeping the land clea",
+          "matched_keywords": [
+            "insecticide",
+            "pest"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6036,
+          "is_relevant": false,
+          "preview": "ii.  Biological Methods •\t Scale insects are destroyed/fed by two species of ladybird beetles that l",
+          "matched_keywords": [
+            "termite",
+            "insecticide",
+            "pest"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.5618,
+          "is_relevant": false,
+          "preview": "productive coconut plantations while reducing the need for chemical pesticides.  Key natural predato",
+          "matched_keywords": [
+            "pest"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "question": "What is the recommended spacing for coconut palms?",
+      "short_title": "Palm spacing",
+      "precision_at_4": 0.75,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 3,
+      "k": 4,
+      "total_relevant_in_top20": 3,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7119,
+          "is_relevant": true,
+          "preview": "12 Establishing a Coconut Plantation Seedling density at coconut planting When planting coconut as a",
+          "matched_keywords": [
+            "spacing",
+            "feet",
+            "meters"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.6681,
+          "is_relevant": true,
+          "preview": "over a period of 5-6 years. First, the new planting holes  should be marked according to the selecte",
+          "matched_keywords": []
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6639,
+          "is_relevant": true,
+          "preview": "Corporation in collaboration with Wayamba University of Sri Lanka (WUCC 05, WUCC 08, WUCC 09, WUCC 1",
+          "matched_keywords": [
+            "spacing"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6469,
+          "is_relevant": false,
+          "preview": "Surface application In an adult coconut palm, “area within a 1.8 m (6 ft) radius from the base const",
+          "matched_keywords": [
+            "distance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "question": "How should I fertilize young coconut palms?",
+      "short_title": "Young palm fertilization",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.2,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 20,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7374,
+          "is_relevant": true,
+          "preview": "10 kg Goat or cattle Manure 10 kg When only organic manures are applied at the time of planting, sub",
+          "matched_keywords": [
+            "young palms",
+            "rock phosphate",
+            "dolomite",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.736,
+          "is_relevant": true,
+          "preview": "60 150 180 230 290 4. Other fertilizers for young coconut palms with Gliricidia Nutrient Source of F",
+          "matched_keywords": [
+            "rock phosphate",
+            "MOP",
+            "dolomite",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.7278,
+          "is_relevant": true,
+          "preview": "60 150 200 270 370 3. Other fertilizers for young coconut palms with seasoned poultry manure Nutrien",
+          "matched_keywords": [
+            "rock phosphate",
+            "MOP",
+            "dolomite",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.7265,
+          "is_relevant": true,
+          "preview": "19 5. Other fertilizers for young coconut palms with agricultural compost (N:P:K – 1:0.5:1) Nutrient",
+          "matched_keywords": [
+            "rock phosphate",
+            "MOP",
+            "dolomite",
+            "fertilizer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "question": "How do I manage yellowing coconut leaves?",
+      "short_title": "Manage leaf yellowing",
+      "precision_at_4": 0.25,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 1,
+      "k": 4,
+      "total_relevant_in_top20": 1,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7734,
+          "is_relevant": true,
+          "preview": "64 Symptoms •\t The angular nature of the coconut leaves is lost, and the leaf blade becomes flat, an",
+          "matched_keywords": [
+            "yellowing",
+            "frond"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.6385,
+          "is_relevant": false,
+          "preview": "56 Scale insects living and feeding on the  underside of coconut leaflets Characteristics of Damage ",
+          "matched_keywords": []
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6362,
+          "is_relevant": false,
+          "preview": "3.\t Avoid removal of mulch 4.\t Avoid planting of coconut seedlings during drought 5.\t Avoid the appl",
+          "matched_keywords": [
+            "frond",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6138,
+          "is_relevant": false,
+          "preview": "•\t A coconut palm of any age is susceptible to the disease. •\t Although the coconut palm does not di",
+          "matched_keywords": [
+            "deficiency",
+            "potassium",
+            "fertilizer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "question": "What are symptoms of collar rot in coconut seedlings?",
+      "short_title": "Seedling collar rot",
+      "precision_at_4": 0.0,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 0,
+      "k": 4,
+      "total_relevant_in_top20": 0,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.5988,
+          "is_relevant": false,
+          "preview": "•\t The disease is caused by soil bacteria that enters the seedling through the growing tip. •\t Black",
+          "matched_keywords": [
+            "seedling",
+            "rotting",
+            "disease"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.5692,
+          "is_relevant": false,
+          "preview": "to healthy areas. o\t Avoiding the planting of seedlings produced in the  diseased area. o\t Planting ",
+          "matched_keywords": [
+            "seedling",
+            "disease"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.5478,
+          "is_relevant": false,
+          "preview": "•\t This fungus infects coconut palms as well as rubber, cocoa, date palm and palmyra palm in the wet",
+          "matched_keywords": []
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.5332,
+          "is_relevant": false,
+          "preview": "parts, the bud withers/dies. •\t The palm dies at any stage when the bud is damaged. •\t Rats gnaw you",
+          "matched_keywords": []
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "question": "How do I select quality coconut seedlings?",
+      "short_title": "Quality seedling selection",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.8,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 5,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7094,
+          "is_relevant": true,
+          "preview": "plantations. •\t Begins bearing coconuts in 5-6 years under normal management conditions. •\t The yiel",
+          "matched_keywords": [
+            "seedling"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.6936,
+          "is_relevant": true,
+          "preview": "These seedlings have a high demand, and the grafted ones are more suitable  for planting. Seedlings ",
+          "matched_keywords": [
+            "seedling"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6703,
+          "is_relevant": true,
+          "preview": "9 Selection of Coconut Cultivars for Establishing a Coconut Plantation  The coconut palm is a perenn",
+          "matched_keywords": []
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6582,
+          "is_relevant": true,
+          "preview": "the Philippines. •\t Ideal for wet and intermediate zones, and for large-scale plantations. •\t Standa",
+          "matched_keywords": [
+            "seedling"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "question": "What is the best planting season for coconut in wet zone?",
+      "short_title": "Wet zone planting season",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.5714,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 7,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.8044,
+          "is_relevant": true,
+          "preview": "•\t Wet Zone\t \t : Rainfall in the wet zone is sufficient for coconut cultivation",
+          "matched_keywords": [
+            "wet zone",
+            "rainfall"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7341,
+          "is_relevant": true,
+          "preview": "12.\t Provide temporary shade 13.\t Planting drought resistant coconut varieties",
+          "matched_keywords": [
+            "planting"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6802,
+          "is_relevant": true,
+          "preview": "34 Note: Even in the wet zone,  evenly distributed rainfall throughout the year is essential. If rai",
+          "matched_keywords": [
+            "wet zone",
+            "rainfall"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6688,
+          "is_relevant": true,
+          "preview": "heat stress conditions. The water requirement of the young coconut palms varies with age. Water requ",
+          "matched_keywords": [
+            "wet zone",
+            "rainfall"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "question": "How do I control black beetle in coconut?",
+      "short_title": "Black beetle control",
+      "precision_at_4": 1.0,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 4,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7684,
+          "is_relevant": true,
+          "preview": "until the plant becomes 3-4 years of age. Wrapping the bud region using a piece of fishing net (nett",
+          "matched_keywords": [
+            "black beetle",
+            "naphthalene",
+            "pheromone",
+            "beetle"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7616,
+          "is_relevant": true,
+          "preview": "48 Symptoms of Black beetle damage Control Methods •\t An integrated pest management practice should ",
+          "matched_keywords": [
+            "black beetle",
+            "beetle"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6841,
+          "is_relevant": true,
+          "preview": "47 Black Beetle Breeding Sites Black beetles breed on decaying coconut trunks, basal parts of fallen",
+          "matched_keywords": [
+            "black beetle",
+            "breeding site",
+            "cow dung",
+            "beetle"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6688,
+          "is_relevant": true,
+          "preview": "for moisture conservation in coconut cultivation. During planting, tie the polybag without removing ",
+          "matched_keywords": [
+            "black beetle",
+            "hook",
+            "beetle"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "question": "How should I apply fertilizer to bearing coconut palms?",
+      "short_title": "Bearing palm fertilizer",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.2,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 20,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.8144,
+          "is_relevant": true,
+          "preview": "22 2. Fertilizer Application for Adult (Bearing) Palms •\t The soil should be moistened when applying",
+          "matched_keywords": [
+            "bearing palms",
+            "split application",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7663,
+          "is_relevant": true,
+          "preview": "Surface application In an adult coconut palm, “area within a 1.8 m (6 ft) radius from the base const",
+          "matched_keywords": [
+            "broadcast",
+            "manure circle",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.749,
+          "is_relevant": true,
+          "preview": "60 150 180 230 290 4. Other fertilizers for young coconut palms with Gliricidia Nutrient Source of F",
+          "matched_keywords": [
+            "MOP",
+            "fertilizer"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.7488,
+          "is_relevant": true,
+          "preview": "10 kg Goat or cattle Manure 10 kg When only organic manures are applied at the time of planting, sub",
+          "matched_keywords": [
+            "fertilizer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "question": "What is the CRIC65 variety and its characteristics?",
+      "short_title": "CRIC65 variety traits",
+      "precision_at_4": 0.0,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 0,
+      "k": 4,
+      "total_relevant_in_top20": 0,
+      "sources_summary": "English.pdf x2, Sinhala.pdf, Tamil.pdf",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.4452,
+          "is_relevant": false,
+          "preview": "plant density, adopting appropriate spacing for mono/intercropping, and following other recommended ",
+          "matched_keywords": [
+            "variety"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.3882,
+          "is_relevant": false,
+          "preview": "areas in Sri Lanka CRISL 98 / Moorock Tall These cultivars are recommended for large-scale cultivati",
+          "matched_keywords": [
+            "CRIC 65",
+            "hybrid"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "Sinhala.pdf",
+          "similarity_score": 0.3825,
+          "is_relevant": false,
+          "preview": "YPM-D ixhq;sh ixhq;sh(%) N – P2O5-K2O                                        13-7-34  CRIC 60, CRIC ",
+          "matched_keywords": [
+            "CRIC 65"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "Tamil.pdf",
+          "similarity_score": 0.3579,
+          "is_relevant": false,
+          "preview": "CRIC 60 / njd;id kuk; njd;id kuk; ,e;j caukhd tiffs; ,yq;ifapy; cs;s midj;J  njd;id tsUk; gFjpfSf;Fk",
+          "matched_keywords": [
+            "CRIC 65"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "question": "How do I prepare nursery beds for coconut?",
+      "short_title": "Nursery bed preparation",
+      "precision_at_4": 0.0,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 0,
+      "k": 4,
+      "total_relevant_in_top20": 0,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.6471,
+          "is_relevant": false,
+          "preview": "However, when intercropped with coconut, width and length can be changed according to the available ",
+          "matched_keywords": [
+            "spacing"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.6165,
+          "is_relevant": false,
+          "preview": "Spacing - Inter row 1.2 m x Intra row 0.9 m Planting Methods – Coconut plantations of 25 - 45 years ",
+          "matched_keywords": [
+            "sand",
+            "spacing"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.613,
+          "is_relevant": false,
+          "preview": "9 Selection of Coconut Cultivars for Establishing a Coconut Plantation  The coconut palm is a perenn",
+          "matched_keywords": []
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6118,
+          "is_relevant": false,
+          "preview": "be 105 cm in width and length, which vary with the space available. However,  when intercropped with",
+          "matched_keywords": [
+            "spacing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "question": "What organic fertilizers can I use for coconut?",
+      "short_title": "Organic fertilizers",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.3636,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 11,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7418,
+          "is_relevant": true,
+          "preview": "20 Recommended fertilizer packages for adult coconut palms with organic manures Organic manures and ",
+          "matched_keywords": [
+            "poultry manure",
+            "gliricidia",
+            "organic"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7332,
+          "is_relevant": true,
+          "preview": "K > Mg > N > P Accordingly, separate chemical and mineral (inorganic) fertilizers, organic manures a",
+          "matched_keywords": [
+            "organic"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.7278,
+          "is_relevant": true,
+          "preview": "60 150 180 230 290 4. Other fertilizers for young coconut palms with Gliricidia Nutrient Source of F",
+          "matched_keywords": [
+            "gliricidia"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.7218,
+          "is_relevant": true,
+          "preview": "60 150 200 270 370 3. Other fertilizers for young coconut palms with seasoned poultry manure Nutrien",
+          "matched_keywords": [
+            "poultry manure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "question": "How do I manage water for coconut seedlings?",
+      "short_title": "Seedling water management",
+      "precision_at_4": 0.5,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 2,
+      "k": 4,
+      "total_relevant_in_top20": 2,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.6998,
+          "is_relevant": true,
+          "preview": "water supply for irrigation. \t Characteristics of a high-quality coconut seedling \t \t • Possesses a ",
+          "matched_keywords": [
+            "irrigation",
+            "seedling",
+            "water"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.6822,
+          "is_relevant": true,
+          "preview": "2.\t Pitcher irrigation •\t Pitcher irrigation slowly releases water to coconut palms through unglazed",
+          "matched_keywords": [
+            "irrigation",
+            "water"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6484,
+          "is_relevant": false,
+          "preview": "3.\t Avoid removal of mulch 4.\t Avoid planting of coconut seedlings during drought 5.\t Avoid the appl",
+          "matched_keywords": [
+            "seedling"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6428,
+          "is_relevant": false,
+          "preview": "moisture  reduces the nut yield, decrease nut size, and lower the copra quality. Therefore, suppleme",
+          "matched_keywords": [
+            "irrigation",
+            "moisture",
+            "water"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "question": "What is the recommended fertilizer for dry zone coconut?",
+      "short_title": "Dry zone fertilizer",
+      "precision_at_4": 1.0,
+      "recall_at_4": 0.2353,
+      "relevant_retrieved": 4,
+      "k": 4,
+      "total_relevant_in_top20": 17,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7409,
+          "is_relevant": true,
+          "preview": "21 Fertilizer Recommendations for King Coconut The same fertilizer recommendations given above can b",
+          "matched_keywords": [
+            "dry zone",
+            "fertilizer",
+            "dolomite",
+            "urea"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7315,
+          "is_relevant": true,
+          "preview": "Rate of application (g/palm) YPM-W (for wet and  intermediate zones) YPM-D (for dry  zone) Dolomite ",
+          "matched_keywords": [
+            "fertilizer",
+            "dolomite"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.7215,
+          "is_relevant": true,
+          "preview": "- 130 150 150 250 Fertilizer Recommendation for Adult Palms The amount of fertilizers that should be",
+          "matched_keywords": [
+            "dry zone",
+            "fertilizer",
+            "dolomite",
+            "urea",
+            "MOP",
+            "APM"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.7214,
+          "is_relevant": true,
+          "preview": "20 Recommended fertilizer packages for adult coconut palms with organic manures Organic manures and ",
+          "matched_keywords": [
+            "fertilizer",
+            "moisture",
+            "dolomite",
+            "organic manure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "question": "How do I protect coconut from Plesispa beetle?",
+      "short_title": "Plesispa beetle control",
+      "precision_at_4": 0.5,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 2,
+      "k": 4,
+      "total_relevant_in_top20": 2,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.6969,
+          "is_relevant": true,
+          "preview": "for moisture conservation in coconut cultivation. During planting, tie the polybag without removing ",
+          "matched_keywords": []
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.6786,
+          "is_relevant": true,
+          "preview": "until the plant becomes 3-4 years of age. Wrapping the bud region using a piece of fishing net (nett",
+          "matched_keywords": [
+            "control",
+            "damage"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6419,
+          "is_relevant": false,
+          "preview": "52 5.   Plesispa Beetle (Plesispa reichei Chapuis) (Coconut Hispid) •\t Damages coconut seedlings in ",
+          "matched_keywords": [
+            "plesispa",
+            "plesispa reichei",
+            "pest",
+            "damage"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6331,
+          "is_relevant": false,
+          "preview": "48 Symptoms of Black beetle damage Control Methods •\t An integrated pest management practice should ",
+          "matched_keywords": [
+            "pest",
+            "control",
+            "damage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "question": "What are characteristics of a vigorous coconut seedling?",
+      "short_title": "Vigorous seedling traits",
+      "precision_at_4": 0.25,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 1,
+      "k": 4,
+      "total_relevant_in_top20": 1,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.6971,
+          "is_relevant": true,
+          "preview": "water supply for irrigation. \t Characteristics of a high-quality coconut seedling \t \t • Possesses a ",
+          "matched_keywords": [
+            "seedling",
+            "collar"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.603,
+          "is_relevant": false,
+          "preview": "plant density, adopting appropriate spacing for mono/intercropping, and following other recommended ",
+          "matched_keywords": []
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.5956,
+          "is_relevant": false,
+          "preview": "plantations. •\t Begins bearing coconuts in 5-6 years under normal management conditions. •\t The yiel",
+          "matched_keywords": [
+            "seedling"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.594,
+          "is_relevant": false,
+          "preview": "Several characteristics help to identify a mature coconut.  •\t The outer husk is brown or yellowish-",
+          "matched_keywords": []
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "question": "How do I replant old coconut plantation?",
+      "short_title": "Replanting old plantation",
+      "precision_at_4": 0.75,
+      "recall_at_4": 1.0,
+      "relevant_retrieved": 3,
+      "k": 4,
+      "total_relevant_in_top20": 3,
+      "sources_summary": "English.pdf x4",
+      "retrieved_chunks": [
+        {
+          "rank": 1,
+          "source": "English.pdf",
+          "similarity_score": 0.7183,
+          "is_relevant": true,
+          "preview": "3.  Vacancy Filling To keep the plantation uniform, after one year of planting, all weak coconut pla",
+          "matched_keywords": [
+            "replanting",
+            "removal",
+            "replant"
+          ]
+        },
+        {
+          "rank": 2,
+          "source": "English.pdf",
+          "similarity_score": 0.7085,
+          "is_relevant": true,
+          "preview": "13 2.\t Replanting Replanting is the complete removal of an existing plantation and the establishment",
+          "matched_keywords": [
+            "replanting",
+            "underplanting",
+            "removal",
+            "replant"
+          ]
+        },
+        {
+          "rank": 3,
+          "source": "English.pdf",
+          "similarity_score": 0.6686,
+          "is_relevant": true,
+          "preview": "over a period of 5-6 years. First, the new planting holes  should be marked according to the selecte",
+          "matched_keywords": [
+            "underplanting"
+          ]
+        },
+        {
+          "rank": 4,
+          "source": "English.pdf",
+          "similarity_score": 0.6245,
+          "is_relevant": false,
+          "preview": "•\t The majority of coconut palms in a coconut plantation are  over 60 years old, and/or the plantati",
+          "matched_keywords": [
+            "underplanting"
+          ]
+        }
+      ]
+    }
+  ]
+}

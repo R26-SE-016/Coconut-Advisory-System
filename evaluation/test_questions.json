@@ -1,0 +1,142 @@
+[
+  {
+    "id": 1,
+    "question": "What fertilizer should I apply when planting coconut?",
+    "relevant_keywords": ["urea", "phosphate", "potash", "dolomite", "planting hole", "YPM", "basal dressing", "rock phosphate", "fertilizer"],
+    "expected_topics": ["fertilizer application", "planting", "nutrient", "basal mixture"],
+    "notes": "Answer should reference CRI fertilizer tables and basal application in the planting hole"
+  },
+  {
+    "id": 2,
+    "question": "How do I select a good mother palm?",
+    "relevant_keywords": ["mother palm", "yield", "nuts", "crown", "spherical", "regular bearer", "frond", "trunk", "seed nut", "selection"],
+    "expected_topics": ["mother palm selection", "seed selection", "palm characteristics", "yield potential"],
+    "notes": "CRI criteria for mother palm selection: high yield, regular bearer, spherical crown, pest free"
+  },
+  {
+    "id": 3,
+    "question": "What is the recommended planting density for coconut?",
+    "relevant_keywords": ["density", "palms per hectare", "palms per acre", "spacing", "square system", "triangular system", "64 palms", "70 palms", "160 palms", "palms"],
+    "expected_topics": ["planting density", "spacing systems", "land preparation", "field layout"],
+    "notes": "CRI recommended palm density under square (64 palms/acre) and triangular (70 palms/acre) systems"
+  },
+  {
+    "id": 4,
+    "question": "How do I control termites in coconut nursery?",
+    "relevant_keywords": ["termite", "chlorpyrifos", "imidacloprid", "nursery", "insecticide", "drenching", "mound", "termite control", "pest"],
+    "expected_topics": ["pest management", "nursery care", "chemical control", "termite protection"],
+    "notes": "CRI chemical and cultural controls for termite damage in coconut nurseries"
+  },
+  {
+    "id": 5,
+    "question": "What is the recommended spacing for coconut palms?",
+    "relevant_keywords": ["spacing", "26 x 26", "8 x 8", "square system", "triangular", "distance", "28 x 28", "feet", "meters", "planting distance"],
+    "expected_topics": ["spacing guidelines", "planting layout", "field design", "palm density"],
+    "notes": "CRI spacing recommendations: 26x26 ft (8x8 m) for square system and 28x28 ft for triangular system"
+  },
+  {
+    "id": 6,
+    "question": "How should I fertilize young coconut palms?",
+    "relevant_keywords": ["young palms", "YPM", "urea", "rock phosphate", "MOP", "dolomite", "split application", "years after planting", "fertilizer"],
+    "expected_topics": ["young palm nutrition", "YPM mixture", "fertilizer schedule", "immature coconut"],
+    "notes": "CRI Young Palm Mixture (YPM) application schedule across years 1-5"
+  },
+  {
+    "id": 7,
+    "question": "How do I manage yellowing coconut leaves?",
+    "relevant_keywords": ["yellowing", "magnesium", "deficiency", "dolomite", "potassium", "frond", "chlorosis", "fertilizer", "leaf yellowing", "nutrient"],
+    "expected_topics": ["nutrient deficiency", "magnesium deficiency", "leaf yellowing", "remedial fertilizer"],
+    "notes": "Managing leaf yellowing due to magnesium or potassium deficiency with dolomite and fertilizer application"
+  },
+  {
+    "id": 8,
+    "question": "What are symptoms of collar rot in coconut seedlings?",
+    "relevant_keywords": ["collar rot", "phytophthora", "fungal", "seedling", "stem base", "rotting", "decay", "fungicide", "collar", "disease"],
+    "expected_topics": ["nursery disease", "collar rot", "phytophthora infection", "symptom identification"],
+    "notes": "Collar rot symptoms: softening and browning at collar region, leaf wilting, fungal infection in nursery"
+  },
+  {
+    "id": 9,
+    "question": "How do I select quality coconut seedlings?",
+    "relevant_keywords": ["seedling selection", "germination", "early sprouting", "vigor", "girth", "collar", "leaves", "culling", "healthy", "seedling"],
+    "expected_topics": ["seedling selection", "culling criteria", "nursery management", "seedling vigor"],
+    "notes": "CRI seedling selection standards: rapid germination, thick collar girth, at least 4-6 split leaves"
+  },
+  {
+    "id": 10,
+    "question": "What is the best planting season for coconut in wet zone?",
+    "relevant_keywords": ["wet zone", "planting season", "monsoon", "maha", "yala", "may", "june", "october", "november", "rainfall", "planting"],
+    "expected_topics": ["planting season", "agro-climatic zones", "wet zone calendar", "monsoon planting"],
+    "notes": "Optimal planting time in Wet Zone: Southwest monsoon (May-June) or Northeast monsoon (Oct-Nov)"
+  },
+  {
+    "id": 11,
+    "question": "How do I control black beetle in coconut?",
+    "relevant_keywords": ["black beetle", "rhinoceros beetle", "oryctes", "naphthalene", "pheromone", "breeding site", "cow dung", "hook", "insecticide", "beetle"],
+    "expected_topics": ["pest control", "rhinoceros beetle", "IPM", "crown inspection"],
+    "notes": "IPM for Rhinoceros / Black beetle: naphthalene balls in frond axils, pheromone traps, removing rotting logs"
+  },
+  {
+    "id": 12,
+    "question": "How should I apply fertilizer to bearing coconut palms?",
+    "relevant_keywords": ["bearing palms", "APM", "adult palm", "broadcast", "circular basin", "manure circle", "split application", "urea", "MOP", "fertilizer"],
+    "expected_topics": ["bearing palm fertilizer", "APM mixture", "application method", "adult palm nutrition"],
+    "notes": "Application of Adult Palm Mixture (APM) around 1.5-2.0m circular basin from palm trunk"
+  },
+  {
+    "id": 13,
+    "question": "What is the CRIC65 variety and its characteristics?",
+    "relevant_keywords": ["CRIC65", "CRIC 65", "hybrid", "tall x dwarf", "typica", "pumila", "yield", "early bearing", "copra", "variety"],
+    "expected_topics": ["coconut varieties", "CRIC65 hybrid", "cultivar characteristics", "yield potential"],
+    "notes": "CRIC65 (Typica x Pumila) hybrid: early flowering in 3-4 years, high nut yield, good copra quality"
+  },
+  {
+    "id": 14,
+    "question": "How do I prepare nursery beds for coconut?",
+    "relevant_keywords": ["nursery bed", "bed preparation", "sand", "seedbed", "drainage", "raised bed", "shade", "spacing", "trench", "nursery"],
+    "expected_topics": ["nursery establishment", "bed preparation", "soil mixture", "seedbed layout"],
+    "notes": "CRI nursery bed preparation: raised beds, practical sandy loam soil, proper drainage, orientation and spacing"
+  },
+  {
+    "id": 15,
+    "question": "What organic fertilizers can I use for coconut?",
+    "relevant_keywords": ["organic fertilizer", "cow dung", "poultry manure", "compost", "gliricidia", "green manure", "coconut husk", "mulching", "organic"],
+    "expected_topics": ["organic farming", "green manure", "compost application", "organic nutrients"],
+    "notes": "Organic soil amendments: Gliricidia sepium, cattle manure, goat manure, compost, coconut husk burial"
+  },
+  {
+    "id": 16,
+    "question": "How do I manage water for coconut seedlings?",
+    "relevant_keywords": ["irrigation", "watering", "seedling", "water management", "drip irrigation", "dry spell", "moisture", "mulching", "water"],
+    "expected_topics": ["water management", "seedling irrigation", "drought mitigation", "nursery watering"],
+    "notes": "Water requirements for coconut seedlings: regular watering during dry spells, mulching to conserve moisture"
+  },
+  {
+    "id": 17,
+    "question": "What is the recommended fertilizer for dry zone coconut?",
+    "relevant_keywords": ["dry zone", "fertilizer", "moisture", "drought", "dolomite", "urea", "MOP", "organic manure", "rainfall season", "APM"],
+    "expected_topics": ["dry zone management", "fertilizer recommendation", "climate adaptation", "nutrient management"],
+    "notes": "Fertilizer management in Dry Zone: application during Maha rains with adequate moisture conservation"
+  },
+  {
+    "id": 18,
+    "question": "How do I protect coconut from Plesispa beetle?",
+    "relevant_keywords": ["plesispa", "leaf beetle", "plesispa reichei", "pest", "chemical spray", "tender leaves", "shoot", "insecticide", "control", "damage"],
+    "expected_topics": ["pest management", "plesispa leaf beetle", "foliar damage", "pest control"],
+    "notes": "Controlling coconut leaf beetle (Plesispa reichei): chemical spray on spear leaf, biocontrol agents"
+  },
+  {
+    "id": 19,
+    "question": "What are characteristics of a vigorous coconut seedling?",
+    "relevant_keywords": ["vigorous", "seedling", "girth", "collar", "leaf count", "broad leaves", "root system", "straight stem", "healthy", "growth"],
+    "expected_topics": ["seedling quality", "morphological characteristics", "vigor assessment", "planting material"],
+    "notes": "Traits of vigorous seedlings: short stout stem, high collar girth, 4+ well-opened green leaves, early germination"
+  },
+  {
+    "id": 20,
+    "question": "How do I replant old coconut plantation?",
+    "relevant_keywords": ["replanting", "underplanting", "senile palms", "old plantation", "removal", "felling", "spacing", "shade", "land preparation", "replant"],
+    "expected_topics": ["replanting strategy", "underplanting", "plantation rehabilitation", "senile palm removal"],
+    "notes": "CRI replanting guidelines: underplanting in inter-rows and phased removal/felling of senile palms over 5-8 years"
+  }
+]

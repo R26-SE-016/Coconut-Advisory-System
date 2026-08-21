@@ -1,0 +1,142 @@
+[
+  {
+    "id": 1,
+    "english": "Palms which yield more than 75 nuts per year.",
+    "reference_sinhala": "වසරකට ගෙඩි 75 කට වඩා අස්වැන්නක් දෙන පොල් ගස්.",
+    "topic": "mother_palm_selection",
+    "source": "CRI Advisory A1"
+  },
+  {
+    "id": 2,
+    "english": "Apply 250g Urea per planting hole in wet and intermediate zones.",
+    "reference_sinhala": "තෙත් සහ අතරමැදි කලාපවල එක් රෝපණ වළකට යූරියා ග්‍රෑම් 250 ක් යොදන්න.",
+    "topic": "fertilizer",
+    "source": "CRI Advisory A5"
+  },
+  {
+    "id": 3,
+    "english": "The optimum density of coconut is recommended as 158 palms per hectare.",
+    "reference_sinhala": "හෙක්ටයාරයකට පොල් ගස් 158 ක් ලෙස ප්‍රශස්ත ඝනත්වය නිර්දේශ කරනු ලැබේ.",
+    "topic": "planting",
+    "source": "CRI Advisory A3"
+  },
+  {
+    "id": 4,
+    "english": "Watering should commence if there is no rain continuously for six days.",
+    "reference_sinhala": "දින හයක් අඛණ්ඩව වර්ෂාවක් නොමැති නම් ජලය සැපයීම ආරම්භ කළ යුතුය.",
+    "topic": "nursery",
+    "source": "CRI Advisory A2"
+  },
+  {
+    "id": 5,
+    "english": "Seed nuts should be dipped in a recommended insecticide solution prior to planting.",
+    "reference_sinhala": "බීජ ගෙඩි රෝපණයට පෙර නිර්දේශිත කෘමිනාශක ද්‍රාවණයක ගිල්විය යුතුය.",
+    "topic": "pest_control",
+    "source": "CRI Advisory A2"
+  },
+  {
+    "id": 6,
+    "english": "Seedlings are ready for transplanting from the seventh month from seed nut planting.",
+    "reference_sinhala": "බීජ ගෙඩි රෝපණය කළ දින සිට හත්වන මාසයේ සිට පැළ බද්ධ කිරීමට සූදානම්.",
+    "topic": "nursery",
+    "source": "CRI Advisory A2"
+  },
+  {
+    "id": 7,
+    "english": "Select palms with at least 2100g of husked nut weight for the total of 3 nuts.",
+    "reference_sinhala": "ගෙඩි 3 ක එකතුවට අවම වශයෙන් පිරිසුදු කළ ගෙඩි බර ග්‍රෑම් 2100 ක් ඇති පොල් ගස් තෝරන්න.",
+    "topic": "mother_palm",
+    "source": "CRI Advisory A1"
+  },
+  {
+    "id": 8,
+    "english": "Fertilizer application is generally not recommended for nurseries.",
+    "reference_sinhala": "තවාන් සඳහා සාමාන්‍යයෙන් පොහොර යෙදීම නිර්දේශ නොකරයි.",
+    "topic": "fertilizer",
+    "source": "CRI Advisory A2"
+  },
+  {
+    "id": 9,
+    "english": "CRIC65 hybrid seedling comes into bearing at 3 to 4 years of age.",
+    "reference_sinhala": "CRIC65 දෙමුහුන් පැළය වයස අවුරුදු 3 සිට 4 අතර කාලයේදී ඵල දැරීම ආරම්භ කරයි.",
+    "topic": "variety",
+    "source": "CRI Advisory A3"
+  },
+  {
+    "id": 10,
+    "english": "Annual nut production per hectare is about 20000 to 22000 for CRIC65.",
+    "reference_sinhala": "CRIC65 සඳහා හෙක්ටයාරයකට වාර්ෂික ගෙඩි නිෂ්පාදනය 20000 සිට 22000 පමණ වේ.",
+    "topic": "variety",
+    "source": "CRI Advisory A3"
+  },
+  {
+    "id": 11,
+    "english": "Termite or white ants cause considerable damage to coconut seed nuts and seedlings.",
+    "reference_sinhala": "වේයන් පොල් බීජ ගෙඩි සහ පැළවලට සැලකිය යුතු හානියක් සිදු කරයි.",
+    "topic": "pest_control",
+    "source": "CRI Advisory A2"
+  },
+  {
+    "id": 12,
+    "english": "Collar rot is common in nursery seedlings with high moisture availability.",
+    "reference_sinhala": "අධික තෙතමනය පවතින තවාන් පැළවල කරවැටි කුණුවීම බහුලව දක්නට ලැබේ.",
+    "topic": "disease",
+    "source": "CRI Advisory A2"
+  },
+  {
+    "id": 13,
+    "english": "Weed control should be carried out once or twice a month depending on weather conditions.",
+    "reference_sinhala": "කාලගුණ තත්ත්වය අනුව මාසයකට වරක් හෝ දෙවරක් වල් පැළෑටි පාලනය සිදු කළ යුතුය.",
+    "topic": "management",
+    "source": "CRI Advisory A2"
+  },
+  {
+    "id": 14,
+    "english": "Apply mulch of dried coconut fronds or coconut husks immediately after fertilizer application.",
+    "reference_sinhala": "පොහොර යෙදීමෙන් පසුව වහාම වියළි පොල් ලෙලි හෝ පොල් කොස් ආවරණ ලෙස යොදන්න.",
+    "topic": "fertilizer",
+    "source": "CRI Advisory A5"
+  },
+  {
+    "id": 15,
+    "english": "Seedlings should be planted with the onset of rains.",
+    "reference_sinhala": "වර්ෂාව ආරම්භය සමඟ පැළ සිටුවිය යුතුය.",
+    "topic": "planting",
+    "source": "CRI Advisory A3"
+  },
+  {
+    "id": 16,
+    "english": "Select blocks yielding over 3500 nuts per acre per year in recent five year period.",
+    "reference_sinhala": "මෑත වසර පහක කාලය තුළ වසරකට අක්කරයකට ගෙඩි 3500 කට වැඩි අස්වැන්නක් දෙන කොටස් තෝරන්න.",
+    "topic": "mother_palm",
+    "source": "CRI Advisory A1"
+  },
+  {
+    "id": 17,
+    "english": "Replanting is recommended for large scale plantations with high level of management.",
+    "reference_sinhala": "ඉහළ කළමනාකරණ මට්ටමක් ඇති විශාල පරිමාණ වගාවන් සඳහා නැවත රෝපණය නිර්දේශ කරනු ලැබේ.",
+    "topic": "replanting",
+    "source": "CRI Advisory A3"
+  },
+  {
+    "id": 18,
+    "english": "Coconut palm requires a continuous supply of plant nutrients for its high nut production.",
+    "reference_sinhala": "පොල් ගසේ ඉහළ ගෙඩි නිෂ්පාදනය සඳහා ශාක පෝෂක නිරන්තර සැපයුමක් අවශ්‍ය වේ.",
+    "topic": "fertilizer",
+    "source": "CRI Advisory A5"
+  },
+  {
+    "id": 19,
+    "english": "The Black Beetle penetrates into the tender bud region and feeds on bud tissues.",
+    "reference_sinhala": "කළු කුරුමිණියා මෘදු කරටි ප්‍රදේශයට විනිවිද ගොස් කරටි පටක ආහාරයට ගනී.",
+    "topic": "pest_control",
+    "source": "CRI Advisory A4"
+  },
+  {
+    "id": 20,
+    "english": "Coconut is a perennial crop and expected to be productive for over 60 years if managed well.",
+    "reference_sinhala": "පොල් බහු වාර්ෂික භෝගයක් වන අතර හොඳින් කළමනාකරණය කළහොත් වසර 60 කට වැඩි කාලයක් ඵලදායී වනු අපේක්ෂා කෙරේ.",
+    "topic": "general",
+    "source": "CRI Advisory A3"
+  }
+]

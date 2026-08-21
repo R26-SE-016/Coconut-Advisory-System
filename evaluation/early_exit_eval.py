@@ -4,11 +4,10 @@ Early Exit Performance Evaluation Script
 Tests 10 sample coconut farming questions and measures the performance
 impact of the early exit optimization in the Multi-LLM validation pipeline.
 
-For each question, records:
-- Semantic similarity score between first two completed candidates
-- Whether early exit was triggered (similarity >= 0.85)
-- Actual response time (with early exit if triggered)
-- Estimated response time without early exit
+Features:
+- Robust rate-limit resilience with 20s inter-question delay countdown
+- Automatic retry on rate limit (with 30s cooldown)
+- Detailed rate limit issue tracking and reporting
 
 Usage:
     python -m evaluation.early_exit_eval
@@ -17,6 +16,14 @@ Usage:
 import sys
 import os
 import time
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
+from dotenv import load_dotenv
+load_dotenv()
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,26 +46,50 @@ SAMPLE_QUESTIONS = [
     "How to improve coconut yield in dry zone areas?",
 ]
 
-# Estimated average Judge LLM call time in seconds (based on typical Groq API latency)
+# Estimated average Judge LLM call time in seconds (based on OpenRouter API latency)
 ESTIMATED_JUDGE_LATENCY_SEC = 4.0
+INTER_QUESTION_DELAY_SEC = 15
+RATE_LIMIT_COOLDOWN_SEC = 30
+
+
+def countdown_delay(seconds: int, message: str = "Waiting before next question..."):
+    """Displays a dynamic countdown timer in the console."""
+    for remaining in range(seconds, 0, -1):
+        print(f"\r  ⏱️  {message} ({remaining}s remaining)... ", end="", flush=True)
+        time.sleep(1)
+    print(f"\r  ⏱️  {message} (Done)                            ", flush=True)
+
+
+def is_rate_limit_result(result: dict, exception: Exception = None) -> bool:
+    """Checks if a result or exception was caused by an API rate limit."""
+    if exception is not None:
+        err_msg = str(exception).lower()
+        if "rate limit" in err_msg or "429" in err_msg or "tpm" in err_msg or "rpm" in err_msg:
+            return True
+
+    if isinstance(result, dict):
+        answers = [
+            result.get("llama_answer", ""),
+            result.get("llama8b_answer", ""),
+            result.get("gemma_answer", ""),
+            result.get("best_answer", ""),
+            result.get("reason", "")
+        ]
+        for a in answers:
+            if isinstance(a, str) and "rate limit" in a.lower():
+                return True
+
+    return False
 
 
 def measure_early_exit_performance():
     """
     Run 10 sample coconut farming questions through the Multi-LLM pipeline
     and record performance metrics for research evaluation.
-
-    Prints a formatted table showing:
-    - Question (truncated)
-    - Similarity Score
-    - Early Exit Triggered (Y/N)
-    - Actual Response Time (ms)
-    - Estimated Time Without Early Exit (ms)
-    - Time Saved (ms)
     """
     print("=" * 100)
-    print("EARLY EXIT PERFORMANCE EVALUATION")
-    print(f"Threshold: {EARLY_EXIT_THRESHOLD}")
+    print("EARLY EXIT PERFORMANCE EVALUATION (RATE LIMIT RESILIENT)")
+    print(f"Threshold: {EARLY_EXIT_THRESHOLD} | Inter-question delay: {INTER_QUESTION_DELAY_SEC}s | Rate limit cooldown: {RATE_LIMIT_COOLDOWN_SEC}s")
     print("=" * 100)
     print()
 
@@ -69,15 +100,47 @@ def measure_early_exit_performance():
 
     # Results storage
     results = []
+    rate_limited_questions = []
 
     for i, question in enumerate(SAMPLE_QUESTIONS, 1):
-        print(f"[{i}/{len(SAMPLE_QUESTIONS)}] Testing: {question[:60]}...")
+        print(f"[{i}/{len(SAMPLE_QUESTIONS)}] Testing: {question}")
 
         start_time = time.time()
+        result = None
+        rate_limit_hit = False
+        retried = False
+
+        # Primary attempt
         try:
             result = get_multi_llm_answer(question, retriever, user_context="Wet Zone | Yala Season (August)")
+            if is_rate_limit_result(result):
+                rate_limit_hit = True
         except Exception as e:
-            print(f"  ERROR: {e}")
+            if is_rate_limit_result(None, e):
+                rate_limit_hit = True
+            else:
+                print(f"  ❌ Error on question {i}: {e}")
+
+        # Retry logic if rate limit detected
+        if rate_limit_hit:
+            print(f"  ⚠️  Rate limit detected on primary attempt! Applying {RATE_LIMIT_COOLDOWN_SEC}s cooldown...")
+            countdown_delay(RATE_LIMIT_COOLDOWN_SEC, f"Rate limit cooldown for Q{i}")
+            print(f"  🔄 Retrying question {i}...")
+            retried = True
+            start_time = time.time()  # Reset timer for retry
+            try:
+                result = get_multi_llm_answer(question, retriever, user_context="Wet Zone | Yala Season (August)")
+                if is_rate_limit_result(result):
+                    rate_limited_questions.append((i, question, "Rate limit persisted after retry"))
+                else:
+                    rate_limited_questions.append((i, question, "Resolved after 1 retry"))
+            except Exception as retry_err:
+                print(f"  ❌ Retry failed for question {i}: {retry_err}")
+                rate_limited_questions.append((i, question, f"Failed on retry: {retry_err}"))
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        if result is None:
             results.append({
                 "question": question,
                 "similarity_score": None,
@@ -85,17 +148,14 @@ def measure_early_exit_performance():
                 "response_time_ms": None,
                 "estimated_without_ee_ms": None,
                 "time_saved_ms": None,
-                "error": str(e),
+                "error": "Failed after retry",
+                "retried": retried
             })
             continue
-        elapsed_ms = int((time.time() - start_time) * 1000)
 
         early_exit = result.get("early_exit", False)
         similarity_score = result.get("similarity_score", None)
 
-        # Estimate time without early exit:
-        # If early exit triggered, add estimated Judge LLM latency to get "without" time
-        # If early exit didn't trigger, the actual time IS the "without" time
         if early_exit:
             estimated_without_ee_ms = elapsed_ms + int(ESTIMATED_JUDGE_LATENCY_SEC * 1000)
             time_saved_ms = int(ESTIMATED_JUDGE_LATENCY_SEC * 1000)
@@ -111,12 +171,18 @@ def measure_early_exit_performance():
             "estimated_without_ee_ms": estimated_without_ee_ms,
             "time_saved_ms": time_saved_ms,
             "best_model": result.get("best_model", "unknown"),
+            "retried": retried
         })
 
         status = "⚡ EARLY EXIT" if early_exit else "🔍 FULL JUDGE"
         sim_str = f"{similarity_score:.4f}" if similarity_score is not None else "N/A"
-        print(f"  {status} | Similarity: {sim_str} | Time: {elapsed_ms}ms")
-        print()
+        retry_tag = " (Retried)" if retried else ""
+        print(f"  {status} | Similarity: {sim_str} | Time: {elapsed_ms}ms{retry_tag}")
+
+        # Inter-question delay countdown (only between questions, not after the last one)
+        if i < len(SAMPLE_QUESTIONS):
+            countdown_delay(INTER_QUESTION_DELAY_SEC, "Waiting before next question")
+            print()
 
     # ============ Print Results Table ============
     print()
@@ -175,6 +241,20 @@ def measure_early_exit_performance():
     print(f"Avg Response Time (w/o EE):   {avg_estimated:.0f}ms")
     print("=" * 60)
 
+    # Rate limit report
+    print()
+    print("=" * 60)
+    print("RATE LIMIT ISSUES REPORT")
+    print("=" * 60)
+    if rate_limited_questions:
+        print(f"Detected {len(rate_limited_questions)} rate limit events during evaluation:")
+        for q_id, q_text, status in rate_limited_questions:
+            print(f"  • [Q{q_id}] \"{q_text[:45]}...\" -> {status}")
+    else:
+        print("✅ Zero rate limit issues detected across all 10 evaluation questions!")
+    print("=" * 60)
+
 
 if __name__ == "__main__":
     measure_early_exit_performance()
+

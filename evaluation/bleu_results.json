@@ -1,0 +1,356 @@
+{
+  "evaluation_date": "2026-08-21T04:01:22.956333+00:00",
+  "translation_model": "openai/gpt-4o-mini via OpenRouter",
+  "bertscore_model": "bert-base-multilingual-cased",
+  "total_sentences": 20,
+  "evaluated_sentences": 20,
+  "average_bleu": 0.1042,
+  "corpus_bleu": 0.1204,
+  "average_bertscore_precision": 0.9521,
+  "average_bertscore_recall": 0.956,
+  "average_bertscore_f1": 0.9538,
+  "best_topic_bertscore_f1": {
+    "topic": "management",
+    "score": 1.0
+  },
+  "worst_topic_bertscore_f1": {
+    "topic": "planting",
+    "score": 0.7523
+  },
+  "bleu_level_distribution": {
+    "excellent_gte_0.7": 0,
+    "good_0.5_0.7": 1,
+    "acceptable_0.3_0.5": 1,
+    "poor_lt_0.3": 18
+  },
+  "topic_scores": {
+    "disease": {
+      "average_bleu": 0.0185,
+      "average_bertscore_f1": 0.9987,
+      "count": 1,
+      "level": "Poor"
+    },
+    "fertilizer": {
+      "average_bleu": 0.1055,
+      "average_bertscore_f1": 0.9592,
+      "count": 4,
+      "level": "Poor"
+    },
+    "general": {
+      "average_bleu": 0.0708,
+      "average_bertscore_f1": 0.8968,
+      "count": 1,
+      "level": "Poor"
+    },
+    "management": {
+      "average_bleu": 0.3058,
+      "average_bertscore_f1": 1.0,
+      "count": 1,
+      "level": "Acceptable"
+    },
+    "mother_palm": {
+      "average_bleu": 0.088,
+      "average_bertscore_f1": 0.9303,
+      "count": 2,
+      "level": "Poor"
+    },
+    "mother_palm_selection": {
+      "average_bleu": 0.1826,
+      "average_bertscore_f1": 0.9977,
+      "count": 1,
+      "level": "Poor"
+    },
+    "nursery": {
+      "average_bleu": 0.0324,
+      "average_bertscore_f1": 0.9962,
+      "count": 2,
+      "level": "Poor"
+    },
+    "pest_control": {
+      "average_bleu": 0.197,
+      "average_bertscore_f1": 0.9991,
+      "count": 3,
+      "level": "Poor"
+    },
+    "planting": {
+      "average_bleu": 0.0267,
+      "average_bertscore_f1": 0.7523,
+      "count": 2,
+      "level": "Poor"
+    },
+    "replanting": {
+      "average_bleu": 0.0332,
+      "average_bertscore_f1": 1.0,
+      "count": 1,
+      "level": "Poor"
+    },
+    "variety": {
+      "average_bleu": 0.0832,
+      "average_bertscore_f1": 0.9957,
+      "count": 2,
+      "level": "Poor"
+    }
+  },
+  "sentence_results": [
+    {
+      "id": 1,
+      "english": "Palms which yield more than 75 nuts per year.",
+      "reference_sinhala": "වසරකට ගෙඩි 75 කට වඩා අස්වැන්නක් දෙන පොල් ගස්.",
+      "hypothesis_sinhala": "වසරකට නියමිතව 75 කට වඩා අස්වැන්න ලබා දෙන පොල් ගස්.",
+      "bleu_score": 0.1826,
+      "bertscore_precision": 0.9976,
+      "bertscore_recall": 0.9978,
+      "bertscore_f1": 0.9977,
+      "level": "Poor",
+      "topic": "mother_palm_selection",
+      "error": false
+    },
+    {
+      "id": 2,
+      "english": "Apply 250g Urea per planting hole in wet and intermediate zones.",
+      "reference_sinhala": "තෙත් සහ අතරමැදි කලාපවල එක් රෝපණ වළකට යූරියා ග්‍රෑම් 250 ක් යොදන්න.",
+      "hypothesis_sinhala": "සියලුම වගාවන්හි වියළි සහ මැද පලාතේ වගා කුඩු වලට 250g යුරියාව යොදන්න.",
+      "bleu_score": 0.0171,
+      "bertscore_precision": 0.8552,
+      "bertscore_recall": 0.8333,
+      "bertscore_f1": 0.8441,
+      "level": "Poor",
+      "topic": "fertilizer",
+      "error": false
+    },
+    {
+      "id": 3,
+      "english": "The optimum density of coconut is recommended as 158 palms per hectare.",
+      "reference_sinhala": "හෙක්ටයාරයකට පොල් ගස් 158 ක් ලෙස ප්‍රශස්ත ඝනත්වය නිර්දේශ කරනු ලැබේ.",
+      "hypothesis_sinhala": "පොල් ගස්වල උපරිම ඝනත්වය හෝක් 158 පොල් ගස් ප්‍රතිහෙක්ටරයකට නිර්දේශ කරයි.",
+      "bleu_score": 0.0534,
+      "bertscore_precision": 0.8398,
+      "bertscore_recall": 0.8013,
+      "bertscore_f1": 0.8201,
+      "level": "Poor",
+      "topic": "planting",
+      "error": false
+    },
+    {
+      "id": 4,
+      "english": "Watering should commence if there is no rain continuously for six days.",
+      "reference_sinhala": "දින හයක් අඛණ්ඩව වර්ෂාවක් නොමැති නම් ජලය සැපයීම ආරම්භ කළ යුතුය.",
+      "hypothesis_sinhala": "වැසි නැතිව දිවියට දින හයක් පුරා යන්න ඇරඹිය යුතුය.",
+      "bleu_score": 0.0449,
+      "bertscore_precision": 0.9951,
+      "bertscore_recall": 0.9949,
+      "bertscore_f1": 0.995,
+      "level": "Poor",
+      "topic": "nursery",
+      "error": false
+    },
+    {
+      "id": 5,
+      "english": "Seed nuts should be dipped in a recommended insecticide solution prior to planting.",
+      "reference_sinhala": "බීජ ගෙඩි රෝපණයට පෙර නිර්දේශිත කෘමිනාශක ද්‍රාවණයක ගිල්විය යුතුය.",
+      "hypothesis_sinhala": "පොල් බීජ ගස් වවන්නට පෙර නිර්දේශිත කීටක නාශක දියරයකට බිඳින්න.",
+      "bleu_score": 0.0447,
+      "bertscore_precision": 0.9982,
+      "bertscore_recall": 0.9983,
+      "bertscore_f1": 0.9983,
+      "level": "Poor",
+      "topic": "pest_control",
+      "error": false
+    },
+    {
+      "id": 6,
+      "english": "Seedlings are ready for transplanting from the seventh month from seed nut planting.",
+      "reference_sinhala": "බීජ ගෙඩි රෝපණය කළ දින සිට හත්වන මාසයේ සිට පැළ බද්ධ කිරීමට සූදානම්.",
+      "hypothesis_sinhala": "පොල් පැළ අස්වැන්නට යොමු කිරීමට සීනි බීජ ගස වගා කළේ සිට හතවන මාසයෙහිදී සූදානම් වේ.",
+      "bleu_score": 0.0198,
+      "bertscore_precision": 0.9973,
+      "bertscore_recall": 0.9974,
+      "bertscore_f1": 0.9974,
+      "level": "Poor",
+      "topic": "nursery",
+      "error": false
+    },
+    {
+      "id": 7,
+      "english": "Select palms with at least 2100g of husked nut weight for the total of 3 nuts.",
+      "reference_sinhala": "ගෙඩි 3 ක එකතුවට අවම වශයෙන් පිරිසුදු කළ ගෙඩි බර ග්‍රෑම් 2100 ක් ඇති පොල් ගස් තෝරන්න.",
+      "hypothesis_sinhala": "2100g කුඩු ගෙඩි බරක් ඇති පොල් ගස් 3 ක් සඳහා තෝරන්න.",
+      "bleu_score": 0.0557,
+      "bertscore_precision": 0.87,
+      "bertscore_recall": 0.8943,
+      "bertscore_f1": 0.882,
+      "level": "Poor",
+      "topic": "mother_palm",
+      "error": false
+    },
+    {
+      "id": 8,
+      "english": "Fertilizer application is generally not recommended for nurseries.",
+      "reference_sinhala": "තවාන් සඳහා සාමාන්‍යයෙන් පොහොර යෙදීම නිර්දේශ නොකරයි.",
+      "hypothesis_sinhala": "පොල් තවාන සඳහා පොහොර යොදන්න සාමාන්‍යයෙන් නිර්දේශ නොකෙරේ.",
+      "bleu_score": 0.1242,
+      "bertscore_precision": 0.9972,
+      "bertscore_recall": 0.9975,
+      "bertscore_f1": 0.9974,
+      "level": "Poor",
+      "topic": "fertilizer",
+      "error": false
+    },
+    {
+      "id": 9,
+      "english": "CRIC65 hybrid seedling comes into bearing at 3 to 4 years of age.",
+      "reference_sinhala": "CRIC65 දෙමුහුන් පැළය වයස අවුරුදු 3 සිට 4 අතර කාලයේදී ඵල දැරීම ආරම්භ කරයි.",
+      "hypothesis_sinhala": "CRIC65 හයිබ්‍රිඩ් පොල් පැළ 3 සිට 4 වසරක වයසට පැමිණෙන විට අස්වැන්න ලබා දිය හැක.",
+      "bleu_score": 0.0612,
+      "bertscore_precision": 0.9961,
+      "bertscore_recall": 0.9962,
+      "bertscore_f1": 0.9961,
+      "level": "Poor",
+      "topic": "variety",
+      "error": false
+    },
+    {
+      "id": 10,
+      "english": "Annual nut production per hectare is about 20000 to 22000 for CRIC65.",
+      "reference_sinhala": "CRIC65 සඳහා හෙක්ටයාරයකට වාර්ෂික ගෙඩි නිෂ්පාදනය 20000 සිට 22000 පමණ වේ.",
+      "hypothesis_sinhala": "CRIC65 සඳහා එක් හෙක්ටරයක වාර්ෂික පොල් අස්වැන්න සමානව 20000 සිට 22000 දක්වා වේ.",
+      "bleu_score": 0.1052,
+      "bertscore_precision": 0.9949,
+      "bertscore_recall": 0.9959,
+      "bertscore_f1": 0.9954,
+      "level": "Poor",
+      "topic": "variety",
+      "error": false
+    },
+    {
+      "id": 11,
+      "english": "Termite or white ants cause considerable damage to coconut seed nuts and seedlings.",
+      "reference_sinhala": "වේයන් පොල් බීජ ගෙඩි සහ පැළවලට සැලකිය යුතු හානියක් සිදු කරයි.",
+      "hypothesis_sinhala": "වේයන් හෝ සුදු කුඹුරු පොල් බීජ හා පොල් පැළවලට දැවැන්ත හානි කරයි.",
+      "bleu_score": 0.0453,
+      "bertscore_precision": 0.9988,
+      "bertscore_recall": 0.9989,
+      "bertscore_f1": 0.9989,
+      "level": "Poor",
+      "topic": "pest_control",
+      "error": false
+    },
+    {
+      "id": 12,
+      "english": "Collar rot is common in nursery seedlings with high moisture availability.",
+      "reference_sinhala": "අධික තෙතමනය පවතින තවාන් පැළවල කරවැටි කුණුවීම බහුලව දක්නට ලැබේ.",
+      "hypothesis_sinhala": "කරටි කුණුවීම පොල් තවානේ ජලය වැඩිවීමෙන් ඇතිවන පොල් පැළවල සාමාන්‍ය වේ.",
+      "bleu_score": 0.0185,
+      "bertscore_precision": 0.9987,
+      "bertscore_recall": 0.9987,
+      "bertscore_f1": 0.9987,
+      "level": "Poor",
+      "topic": "disease",
+      "error": false
+    },
+    {
+      "id": 13,
+      "english": "Weed control should be carried out once or twice a month depending on weather conditions.",
+      "reference_sinhala": "කාලගුණ තත්ත්වය අනුව මාසයකට වරක් හෝ දෙවරක් වල් පැළෑටි පාලනය සිදු කළ යුතුය.",
+      "hypothesis_sinhala": "කොළ කුඩු පාලනය මාසයකට වරක් හෝ දෙවරක් කාලගුණ තත්වය අනුව සිදු කළ යුතුය.",
+      "bleu_score": 0.3058,
+      "bertscore_precision": 1.0,
+      "bertscore_recall": 1.0,
+      "bertscore_f1": 1.0,
+      "level": "Acceptable",
+      "topic": "management",
+      "error": false
+    },
+    {
+      "id": 14,
+      "english": "Apply mulch of dried coconut fronds or coconut husks immediately after fertilizer application.",
+      "reference_sinhala": "පොහොර යෙදීමෙන් පසුව වහාම වියළි පොල් ලෙලි හෝ පොල් කොස් ආවරණ ලෙස යොදන්න.",
+      "hypothesis_sinhala": "පොහොර යොදන්නාට පසුව වහාම වියළි පොල් පත්‍ර හෝ පොල් කුඩු යොදන්න.",
+      "bleu_score": 0.2471,
+      "bertscore_precision": 0.9966,
+      "bertscore_recall": 0.9965,
+      "bertscore_f1": 0.9965,
+      "level": "Poor",
+      "topic": "fertilizer",
+      "error": false
+    },
+    {
+      "id": 15,
+      "english": "Seedlings should be planted with the onset of rains.",
+      "reference_sinhala": "වර්ෂාව ආරම්භය සමඟ පැළ සිටුවිය යුතුය.",
+      "hypothesis_sinhala": "පැළවල වර්ෂා කාලය ආරම්භ වූ විට ව심න්න.",
+      "bleu_score": 0,
+      "bertscore_precision": 0.6375,
+      "bertscore_recall": 0.7391,
+      "bertscore_f1": 0.6845,
+      "level": "Poor",
+      "topic": "planting",
+      "error": false
+    },
+    {
+      "id": 16,
+      "english": "Select blocks yielding over 3500 nuts per acre per year in recent five year period.",
+      "reference_sinhala": "මෑත වසර පහක කාලය තුළ වසරකට අක්කරයකට ගෙඩි 3500 කට වැඩි අස්වැන්නක් දෙන කොටස් තෝරන්න.",
+      "hypothesis_sinhala": "අවුරුදු පහක කාලය තුළ එක් අක්කරයකට වසරකට 3500 කට වඩා වැඩි පොල් අස්වැන්නක් ලබා දෙන කොටස් තෝරන්න.",
+      "bleu_score": 0.1204,
+      "bertscore_precision": 0.9775,
+      "bertscore_recall": 0.9796,
+      "bertscore_f1": 0.9786,
+      "level": "Poor",
+      "topic": "mother_palm",
+      "error": false
+    },
+    {
+      "id": 17,
+      "english": "Replanting is recommended for large scale plantations with high level of management.",
+      "reference_sinhala": "ඉහළ කළමනාකරණ මට්ටමක් ඇති විශාල පරිමාණ වගාවන් සඳහා නැවත රෝපණය නිර්දේශ කරනු ලැබේ.",
+      "hypothesis_sinhala": "වැඩිහිටි කළු පොල් ගස් වලින් යුතු විශාල ප්‍රතිපත්ති සඳහා නැවත පැළැස්ම නිර්දේශ කරයි.",
+      "bleu_score": 0.0332,
+      "bertscore_precision": 1.0,
+      "bertscore_recall": 1.0,
+      "bertscore_f1": 1.0,
+      "level": "Poor",
+      "topic": "replanting",
+      "error": false
+    },
+    {
+      "id": 18,
+      "english": "Coconut palm requires a continuous supply of plant nutrients for its high nut production.",
+      "reference_sinhala": "පොල් ගසේ ඉහළ ගෙඩි නිෂ්පාදනය සඳහා ශාක පෝෂක නිරන්තර සැපයුමක් අවශ්‍ය වේ.",
+      "hypothesis_sinhala": "පොල් ගසට එහි උසස් පොල් අස්වැන්න සඳහා ශාක පෝෂණය අඛණ්ඩව ලබා දිය යුතුය.",
+      "bleu_score": 0.0337,
+      "bertscore_precision": 0.999,
+      "bertscore_recall": 0.999,
+      "bertscore_f1": 0.999,
+      "level": "Poor",
+      "topic": "fertilizer",
+      "error": false
+    },
+    {
+      "id": 19,
+      "english": "The Black Beetle penetrates into the tender bud region and feeds on bud tissues.",
+      "reference_sinhala": "කළු කුරුමිණියා මෘදු කරටි ප්‍රදේශයට විනිවිද ගොස් කරටි පටක ආහාරයට ගනී.",
+      "hypothesis_sinhala": "කළු කුරුමිණියා මෘදු කරටි ප්‍රදේශයට පිවිසී කරටි කුඩු වලට ආහාරය ගනී.",
+      "bleu_score": 0.5009,
+      "bertscore_precision": 1.0,
+      "bertscore_recall": 1.0,
+      "bertscore_f1": 1.0,
+      "level": "Good",
+      "topic": "pest_control",
+      "error": false
+    },
+    {
+      "id": 20,
+      "english": "Coconut is a perennial crop and expected to be productive for over 60 years if managed well.",
+      "reference_sinhala": "පොල් බහු වාර්ෂික භෝගයක් වන අතර හොඳින් කළමනාකරණය කළහොත් වසර 60 කට වැඩි කාලයක් ඵලදායී වනු අපේක්ෂා කෙරේ.",
+      "hypothesis_sinhala": "පොල් ගස වසර 60 කට වඩා වැඩි කාලයක් ප්‍රතිඵලදායක විය හැකි දිගුකාලීන පැළයක් වන අතර, එය හොඳින් කළම",
+      "bleu_score": 0.0708,
+      "bertscore_precision": 0.8929,
+      "bertscore_recall": 0.9007,
+      "bertscore_f1": 0.8968,
+      "level": "Poor",
+      "topic": "general",
+      "error": false
+    }
+  ]
+}
