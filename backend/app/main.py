@@ -22,7 +22,7 @@ import uuid
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_tamil
+from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_tamil, calculate_combined_reliability
 
 # Load environment variables
 load_dotenv()
@@ -38,45 +38,50 @@ retriever = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load RAG chain when server starts"""
+    # Startup: Load RAG chain once
     global rag_chain, retriever
+    logger.info("Loading RAG chain...")
     try:
-        logger.info("Loading RAG chain...")
         rag_chain, retriever = load_rag_chain()
         logger.info("RAG chain loaded successfully!")
     except Exception as e:
         logger.error(f"Failed to load RAG chain: {str(e)}")
-        raise
+        rag_chain = None
+        retriever = None
     yield
+    # Shutdown
+    logger.info("Shutting down...")
 
-
-# Initialize FastAPI app
 app = FastAPI(
     title="SaruPol API",
-    description="RAG-based advisory system for coconut farming in Sri Lanka",
+    description="Backend API for SaruPol Coconut Advisory System with Multi-LLM Consensus Validation",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Add CORS middleware for mobile and web clients
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount static files (support both /static and /api/static prefixes)
+# Mount static files (support /static, /api/static, and /api/v1/static prefixes)
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
     app.mount("/api/static", StaticFiles(directory=static_dir), name="api_static")
+    app.mount("/api/v1/static", StaticFiles(directory=static_dir), name="api_v1_static")
 
-@app.get("/", tags=["Health"])
+# API Router with prefix
+router = APIRouter(prefix="/api/v1")
+
+# Root endpoints (without prefix) for compatibility
+@app.get("/")
 async def root():
-    """Serve the web interface"""
-    index_file = os.path.join(static_dir, "index.html")
+    index_file = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
     return {
@@ -128,8 +133,12 @@ class AnswerResponse(BaseModel):
     zone: Optional[str] = None
     season: Optional[str] = None
     confidence: Optional[float] = None
+    retrieval_confidence: float = 0.0
+    combined_reliability: float = 0.0
+    reliability_level: str = 'Moderate'
     context_used: Optional[str] = None
     session_id: Optional[str] = None
+    model_used: Optional[str] = "openai/gpt-4o-mini"
 
 class ErrorResponse(BaseModel):
     success: bool = False
@@ -166,6 +175,9 @@ class MultiLLMResponse(BaseModel):
     best_model: str
     reason: str
     consensus_score: int
+    retrieval_confidence: float = 0.0
+    combined_reliability: float = 0.0
+    reliability_level: str = 'Moderate'
     llama_answer: str
     llama8b_answer: str
     gemma_answer: Optional[str] = None
@@ -288,16 +300,17 @@ async def ask_question(request: QuestionRequest):
         )
         
         # Translate the answer back to target language if non-English
+        target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
         answer = result["answer"]
         display_question = question
-        if user_lang in ("si", "ta"):
-            lang_name = 'Sinhala' if user_lang == 'si' else 'Tamil'
+        if target_lang in ("si", "ta"):
+            lang_name = 'Sinhala' if target_lang == 'si' else 'Tamil'
             logger.info(f"Translating answer to {lang_name}...")
             try:
-                answer = await asyncio.to_thread(translate_text, answer, user_lang)
-                if detected_lang == 'en':
-                    display_question = await asyncio.to_thread(translate_text, question, user_lang)
-                logger.info(f"Answer and question successfully translated to {lang_name}.")
+                answer = await asyncio.to_thread(translate_text, answer, target_lang)
+                if detected_lang == 'en' and user_lang in ('si', 'ta'):
+                    display_question = await asyncio.to_thread(translate_text, question, target_lang)
+                logger.info(f"Answer successfully translated to {lang_name}.")
             except Exception as e:
                 logger.error(f"Error translating answer to {lang_name}: {str(e)}")
                 # Fallback to original English answer
@@ -326,6 +339,13 @@ async def ask_question(request: QuestionRequest):
         # Calculate season
         season = _determine_season()
 
+        # Calculate combined reliability
+        retrieval_conf = result.get("retrieval_confidence", 0.85)
+        combined_rel = result.get("combined_reliability")
+        rel_level = result.get("reliability_level")
+        if combined_rel is None:
+            combined_rel, rel_level = calculate_combined_reliability(retrieval_conf, 80.0)
+
         return AnswerResponse(
             success=True,
             question=display_question, # Return Sinhala translated or original question
@@ -335,6 +355,9 @@ async def ask_question(request: QuestionRequest):
             zone=zone,
             season=season,
             confidence=result.get("confidence"),
+            retrieval_confidence=retrieval_conf,
+            combined_reliability=combined_rel,
+            reliability_level=rel_level,
             context_used=result.get("context_used"),
             session_id=session_id
         )
@@ -498,12 +521,25 @@ async def ask_multi_llm(request: MultiLLMRequest):
             for img in raw_images
         ]
 
+        # Calculate combined reliability
+        retrieval_conf = result.get("retrieval_confidence", 0.85)
+        combined_rel = result.get("combined_reliability")
+        rel_level = result.get("reliability_level")
+        if combined_rel is None:
+            combined_rel, rel_level = calculate_combined_reliability(
+                retrieval_confidence=retrieval_conf,
+                consensus_score=result.get("consensus_score", 50)
+            )
+
         return MultiLLMResponse(
             success=True,
             best_answer=best_answer,
             best_model=result["best_model"],
             reason=reason,
             consensus_score=result["consensus_score"],
+            retrieval_confidence=retrieval_conf,
+            combined_reliability=combined_rel,
+            reliability_level=rel_level,
             llama_answer=llama_answer,
             llama8b_answer=llama8b_answer,
             gemma_answer=gemma_answer,
