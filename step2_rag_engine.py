@@ -103,6 +103,11 @@ Use the provided knowledge base context and conversation history to answer the f
 If the answer cannot be determined from the context or conversation history, say: "I don't have information about that in my knowledge base."
 Give practical, clear advice a farmer can understand and apply immediately.
 
+Farmer Location & Seasonal Context:
+{user_context}
+
+CRITICAL: When the farmer asks about fertilizer, pest management, or planting, prioritize recommendations specifically for their designated Agro-Ecological Zone (e.g. Wet Zone, Dry Zone, Intermediate Zone) and current Season (Yala/Maha) as specified in Farmer Location & Seasonal Context above. If the context has zone-specific recommendations (e.g., Eppawela Rock Phosphate for Wet/Intermediate zones vs TSP for Dry zone), provide the specific recommendation for the farmer's zone first.
+
 Context:
 {context}"""),
     MessagesPlaceholder(variable_name="chat_history"),
@@ -110,11 +115,11 @@ Context:
 ])
 
 
-def _contextualize_question(question: str, session_id: str) -> str:
+def _contextualize_question(question: str, session_id: str, user_context: str = None) -> str:
     """
     If there is prior history in session_id, rephrase follow-up questions
     into a complete standalone question for optimal vector retrieval while
-    intelligently handling new topic transitions and standalone keywords.
+    intelligently handling new topic transitions, standalone keywords, and farmer zone context.
     """
     history = get_session_history(session_id)
     if not history.messages:
@@ -124,13 +129,16 @@ def _contextualize_question(question: str, session_id: str) -> str:
     history_text = "\n".join([f"{msg.type.capitalize()}: {msg.content[:400]}" for msg in recent_msgs])
 
     try:
-        condense_prompt = PromptTemplate.from_template("""Given the chat history between a coconut farmer and an agricultural advisor, rephrase the follow-up question into a clear, complete standalone question about coconut farming in Sri Lanka for knowledge base retrieval.
+        condense_prompt = PromptTemplate.from_template("""Given the chat history between a coconut farmer and an agricultural advisor and the farmer's location context ({user_context}), rephrase the follow-up question into a clear, complete standalone question about coconut farming in Sri Lanka for knowledge base retrieval.
 
 CRITICAL RULES:
-1. TRUE FOLLOW-UPS: If the user asks a follow-up referring to the previous discussion (e.g. "what dosage?", "how often to apply?", "what about in the dry zone?", "how to prevent it?"), carry over the relevant subject and plant stage.
+1. TRUE FOLLOW-UPS: If the user asks a follow-up referring to the previous discussion (e.g. "what dosage?", "how often to apply?", "when is the best time to apply?", "what about in the dry zone?", "how to prevent it?"), carry over the relevant subject, plant stage, and farmer's specific zone/season ({user_context}).
 2. NEW TOPIC / NEW PEST / SHORT QUERY: If the user introduces a new pest, disease, practice, or topic (e.g. "red palm weevil", "black beetle", "fertilizer application", "bud rot", "mother palm"), treat it as a NEW query about that topic in coconut cultivation. DO NOT contaminate the new topic with unrelated previous constraints (e.g. do NOT force "in nursery" if the new pest is red palm weevil).
 3. SHORT KEYWORDS / PHRASES: If the user inputs just a keyword or short phrase (e.g. "red palm weevil" / "රතු කුරුමිණියා", "black beetle", "dolomite"), rephrase into a comprehensive advisory question (e.g. "What is red palm weevil, its damage symptoms, and recommended control and management methods in coconut palms?").
 4. DO NOT answer the question. Return ONLY the rephrased standalone question.
+
+Farmer Location & Season:
+{user_context}
 
 Chat History:
 {history}
@@ -147,7 +155,11 @@ Standalone Question:""")
             timeout=20
         )
         chain = condense_prompt | llm_condense | StrOutputParser()
-        standalone_q = chain.invoke({"history": history_text, "question": question}).strip()
+        standalone_q = chain.invoke({
+            "history": history_text,
+            "question": question,
+            "user_context": user_context or "Sri Lanka Coconut Cultivation"
+        }).strip()
         return standalone_q if standalone_q else question
     except Exception as e:
         import logging
@@ -293,8 +305,8 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         session_id = str(uuid.uuid4())
 
     # 1. Rephrase follow-up question using chat history for accurate RAG vector retrieval
-    standalone_q = _contextualize_question(question, session_id)
-    search_query = f"User Context: {user_context}\nQuestion: {standalone_q}" if user_context else standalone_q
+    standalone_q = _contextualize_question(question, session_id, user_context=user_context)
+    search_query = f"{standalone_q} Context: {user_context}" if user_context else standalone_q
 
     # 2. Smart Query Routing: Detect topic and retrieve source documents
     question_topic = detect_question_topic(standalone_q)
@@ -364,7 +376,11 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
 
     try:
         answer = with_message_history.invoke(
-            {"question": effective_question, "context": context},
+            {
+                "question": effective_question,
+                "context": context,
+                "user_context": user_context or "Sri Lanka Coconut Cultivation (All Zones)"
+            },
             config={"configurable": {"session_id": session_id}}
         )
     except Exception as primary_err:
@@ -387,7 +403,11 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
                 history_messages_key="chat_history"
             )
             answer = fb_with_history.invoke(
-                {"question": effective_question, "context": context},
+                {
+                    "question": effective_question,
+                    "context": context,
+                    "user_context": user_context or "Sri Lanka Coconut Cultivation (All Zones)"
+                },
                 config={"configurable": {"session_id": session_id}}
             )
         except Exception as fb_err:
