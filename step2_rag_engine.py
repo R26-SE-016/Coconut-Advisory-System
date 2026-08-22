@@ -98,17 +98,19 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
 
 
 _MEMORY_QA_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka.
-Use the provided knowledge base context and conversation history to answer the farmer's question accurately.
-If the answer cannot be determined from the context or conversation history, say: "I don't have information about that in my knowledge base."
-Give practical, clear advice a farmer can understand and apply immediately.
+    ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka (Coconut Research Institute recommendations).
+Use the provided knowledge base context and conversation history to answer the farmer's question thoroughly, accurately, and practically.
 
-Farmer Location & Seasonal Context:
+GUIDELINES:
+1. Provide a comprehensive, practical answer based on the knowledge base context (including irrigation systems like drip/basin/sprinkler, water requirements of 40-60 L/day up to 100 L/day under heat stress, soil moisture factors, fertilizer, and pest/disease management).
+2. When the farmer asks about a specific zone (e.g., Dry Zone, Intermediate Zone, Wet Zone) or dry period conditions, explain the appropriate practices, systems, and water management described in the knowledge base. If the farmer does not specify a zone, you may refer to the farmer's location context ({user_context}).
+3. Present your advice in clean, readable bullet points with actionable steps for Sri Lankan coconut farmers.
+4. If a question is entirely unrelated to coconut agriculture, politely clarify that you specialize in Sri Lankan coconut farming advice.
+
+Farmer Location Context:
 {user_context}
 
-CRITICAL: When the farmer asks about fertilizer, pest management, or planting, prioritize recommendations specifically for their designated Agro-Ecological Zone (e.g. Wet Zone, Dry Zone, Intermediate Zone) and current Season (Yala/Maha) as specified in Farmer Location & Seasonal Context above. If the context has zone-specific recommendations (e.g., Eppawela Rock Phosphate for Wet/Intermediate zones vs TSP for Dry zone), provide the specific recommendation for the farmer's zone first.
-
-Context:
+Knowledge Base Context:
 {context}"""),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{question}")
@@ -306,7 +308,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
 
     # 1. Rephrase follow-up question using chat history for accurate RAG vector retrieval
     standalone_q = _contextualize_question(question, session_id, user_context=user_context)
-    search_query = f"{standalone_q} Context: {user_context}" if user_context else standalone_q
+    search_query = standalone_q.strip() if (standalone_q and standalone_q.strip()) else question
 
     # 2. Smart Query Routing: Detect topic and retrieve source documents
     question_topic = detect_question_topic(standalone_q)
@@ -314,7 +316,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
 
     if question_topic != 'general':
         try:
-            filtered_retriever = get_filtered_retriever(question_topic, retriever=retriever, k=4, fetch_k=50)
+            filtered_retriever = get_filtered_retriever(question_topic, retriever=retriever, k=5, fetch_k=50)
             if filtered_retriever is not None:
                 filtered_docs = filtered_retriever.invoke(search_query)
                 if len(filtered_docs) >= 2:
@@ -327,7 +329,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
     if not source_docs:
         try:
             if hasattr(retriever, "vectorstore"):
-                docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=4)
+                docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=5)
                 source_docs = [doc for doc, _ in docs_and_scores]
             else:
                 source_docs = retriever.invoke(search_query)
