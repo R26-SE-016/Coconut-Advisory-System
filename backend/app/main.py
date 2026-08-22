@@ -591,70 +591,75 @@ async def text_to_speech(text: str, lang: str = "en"):
         cleaned = re.sub(r'\s{2,}', ' ', cleaned)
         return cleaned.strip()
 
+    def sinhala_phonetic_cleanup(raw_text: str) -> str:
+        """
+        Enhance Sinhala text with phonetic adjustments for domain words,
+        fertilizer codes, and abbreviations to ensure crystal-clear enunciation.
+        """
+        cleaned = raw_text
+        phonetic_dict = {
+            "සරුපොල්": "සරු පොල්",
+            "සරුපොල": "සරු පොල",
+            "SaruPol": "සරු පොල්",
+            "Sarupol": "සරු පොල්",
+            "sarupol": "සරු පොල්",
+            "AI": "ඒ අයි",
+            "A.I.": "ඒ අයි",
+            "A.I": "ඒ අයි",
+            "ai": "ඒ අයි",
+            "RAG": "රැග්",
+            "NPK": "එන් පී කේ",
+            "YPM": "වයි පී එම්",
+            "APM": "ඒ පී එම්",
+            "CRIC71": "සී ආර් අයි සී හැත්තෑ එක",
+            "CRIC60": "සී ආර් අයි සී හැට",
+            "CRIC65": "සී ආර් අයි සී හැට පහ",
+            "CRISL98": "සී ආර් අයි එස් එල් අනූ අට",
+        }
+        for k, v in phonetic_dict.items():
+            cleaned = re.sub(r'\b' + re.escape(k) + r'\b', v, cleaned)
+            cleaned = cleaned.replace(k, v)
+        return cleaned
+
     def add_sinhala_pronunciation_hints(raw_text: str) -> str:
         """
-        Spell out English abbreviations letter-by-letter so the Sinhala
+        Spell out English abbreviations letter-by-letter so the Tamil/English
         TTS engine pronounces them clearly instead of garbling them.
         """
-        # Spell out common fertilizer codes letter by letter
         def spell_out(match):
             code = match.group(0)
-            # Add spaces between letters/digits for TTS to pronounce individually
             return ' '.join(code)
         
-        # Match uppercase letter+digit codes like YPM-W, APM-D, NPK, etc.
         processed = re.sub(r'\b[A-Z]{2,}(?:-[A-Z0-9]+)?\b', spell_out, raw_text)
-        return processed
-
-    def normalize_sinhala_for_tts(raw_text: str) -> str:
-        """
-        Normalize Sinhala Unicode for better TTS pronunciation.
-        
-        Preserves Zero Width Joiner (U+200D) so conjunct consonants (e.g. ප්‍ර, ක්‍ර, ත්‍ර)
-        are pronounced properly as consonant blends.
-        
-        Maps retroflex characters (ළ, ණ, etc.) to their dental counterparts (ල, න) because
-        TTS voices often mispronounce or skip retroflex characters entirely.
-        """
-        processed = raw_text
-        
-        # Replace retroflex vowel forms and characters with dental counterparts
-        replacements = [
-            ('\u0dc5\u0dd6', '\u0dbd\u0dd6'),  # ළූ -> ලූ
-            ('\u0dc5\u0dd4', '\u0dbd\u0dd4'),  # ළු -> ලු
-            ('\u0dab\u0dd6', '\u0db1\u0dd6'),  # ණූ -> නූ
-            ('\u0dab\u0dd4', '\u0db1\u0dd4'),  # ණු -> නු
-            ('\u0dab\u0dca', '\u0db1\u0dca'),  # ණ් -> න්
-            ('\u0dc5', '\u0dbd'),              # ළ -> ල
-            ('\u0dab', '\u0db1'),              # ණ -> න
-        ]
-        
-        for search, replace in replacements:
-            processed = processed.replace(search, replace)
-            
-        # Clean up other invisible formatting codes except ZWJ (\u200d)
-        processed = processed.replace('\u200c', '')  # Remove ZWNJ
-        processed = processed.replace('\u200b', '')  # Remove ZWSP
-        processed = processed.replace('\ufeff', '')  # Remove BOM
-        processed = processed.replace('\u00a0', ' ') # Replace non-breaking space
-        
         return processed
 
     # Clean the text
     cleaned_text = clean_text_for_tts(text)
     
-    # Map languages to Edge TTS neural voices and rate settings
+    # 1. Sinhala -> Google Sinhala TTS (gTTS) for highest clarity and natural articulation
     if lang.lower() == "si":
-        voice = "si-LK-SameeraNeural"  # Revert to SameeraNeural as default for wider baseline
-        rate = "-10%"   # Slower rate for clear Sinhala articulation
-        # Normalize Sinhala Unicode conjuncts and retroflex characters
-        cleaned_text = normalize_sinhala_for_tts(cleaned_text)
-        # Add pronunciation hints for English terms in Sinhala text
-        cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
-    elif lang.lower() == "ta":
+        cleaned_text = sinhala_phonetic_cleanup(cleaned_text)
+        logger.info(f"Generating Google Sinhala TTS for text length {len(cleaned_text)}")
+        try:
+            from gtts import gTTS
+            import io
+            
+            def sinhala_audio_stream():
+                fp = io.BytesIO()
+                tts = gTTS(text=cleaned_text, lang='si', slow=False)
+                tts.write_to_fp(fp)
+                fp.seek(0)
+                yield fp.read()
+                
+            return StreamingResponse(sinhala_audio_stream(), media_type="audio/mpeg")
+        except Exception as e:
+            logger.error(f"Error generating Google Sinhala TTS audio: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"TTS generation error: {str(e)}")
+
+    # 2. Tamil & English -> Microsoft Edge TTS Neural Voices
+    if lang.lower() == "ta":
         voice = "ta-LK-KumarNeural"  # Sri Lankan Tamil voice
         rate = "-10%"   # Slower rate for clear Tamil articulation
-        # Add pronunciation hints for English terms in Tamil text (same pattern as Sinhala)
         cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
     else:
         voice = "en-US-AriaNeural"
