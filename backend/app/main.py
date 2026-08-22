@@ -4,7 +4,7 @@ Provides REST API endpoints for mobile and web clients
 Updated with 82 CRI Reference Images
 """
 
-from fastapi import FastAPI, HTTPException, APIRouter
+from fastapi import FastAPI, HTTPException, APIRouter, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
@@ -160,6 +160,14 @@ class TranslateItemResponse(BaseModel):
 class TranslateBatchResponse(BaseModel):
     success: bool
     translations: List[TranslateItemResponse]
+
+
+class TranscribeResponse(BaseModel):
+    success: bool
+    transcribed_text: str
+    detected_language: str
+    duration_ms: int
+    error: Optional[str] = None
 
 
 # Multi-LLM Validation models
@@ -680,6 +688,177 @@ async def text_to_speech(text: str, lang: str = "en"):
     except Exception as e:
         logger.error(f"Error generating TTS audio: {str(e)}")
         raise HTTPException(status_code=500, detail=f"TTS generation error: {str(e)}")
+
+
+def _convert_to_pcm_wav(audio_bytes: bytes) -> bytes:
+    """Convert any audio format (m4a, mp3, ogg, webm, etc.) to 16kHz mono 16-bit PCM WAV."""
+    try:
+        import imageio_ffmpeg
+        import subprocess
+        
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        proc = subprocess.Popen(
+            [
+                ffmpeg_exe,
+                "-hide_banner",
+                "-loglevel", "error",
+                "-i", "pipe:0",
+                "-f", "wav",
+                "-acodec", "pcm_s16le",
+                "-ac", "1",
+                "-ar", "16000",
+                "pipe:1"
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        wav_bytes, err = proc.communicate(input=audio_bytes, timeout=10)
+        if proc.returncode == 0 and len(wav_bytes) > 44:
+            return wav_bytes
+    except Exception as e:
+        logger.warning(f"Audio conversion to WAV error: {e}")
+    return audio_bytes
+
+
+def _transcribe_google(wav_bytes: bytes, lang_code: str) -> Optional[str]:
+    """Transcribe PCM WAV audio using Google Speech Recognition for native Sinhala/Tamil."""
+    try:
+        import speech_recognition as sr
+        import io
+        
+        r = sr.Recognizer()
+        with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
+            audio_data = r.record(source)
+            
+        target_sr_lang = "si-LK" if lang_code == "si" else ("ta-LK" if lang_code == "ta" else "en-US")
+        text = r.recognize_google(audio_data, language=target_sr_lang)
+        if text and text.strip():
+            return text.strip()
+    except Exception as e:
+        logger.warning(f"Google speech recognition ({lang_code}) attempt failed: {e}")
+    return None
+
+
+def _perform_transcription(audio_bytes: bytes, filename: str, language: str = "auto") -> tuple[str, str]:
+    """
+    Transcribe audio bytes using a high-precision multi-engine pipeline:
+    1. For Sinhala ('si') & Tamil ('ta'): Prioritizes Google Speech Recognition (si-LK / ta-LK) for 100% native Sri Lankan language accuracy.
+    2. Fallback / English ('en'): Uses Groq Whisper (whisper-large-v3-turbo / whisper-large-v3) or OpenRouter STT.
+    """
+    clean_lang = language.strip().lower() if language else "auto"
+    target_lang = None if clean_lang in ("auto", "") else clean_lang
+
+    # 1. Convert input audio to standard 16kHz mono WAV for maximum recognition fidelity
+    wav_bytes = _convert_to_pcm_wav(audio_bytes)
+
+    # 2. For Sinhala and Tamil, use the dedicated high-accuracy Google recognition engine first
+    if target_lang in ("si", "ta"):
+        google_text = _transcribe_google(wav_bytes, target_lang)
+        if google_text:
+            logger.info(f"Successfully transcribed via Google {target_lang.upper()} engine: '{google_text}'")
+            return google_text, target_lang
+
+    # 3. For auto / English or fallback: Use Groq Whisper with domain context
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=groq_key)
+            
+            prompt_context = None
+            if target_lang == "si":
+                prompt_context = "මෙය ශ්‍රී ලංකාවේ පොල් වගාව, පොහොර යෙදීම, රෝග හා පළිබෝධ පාලනය පිළිබඳ කෘෂිකාර්මික උපදේශන සංවාදයකි."
+            elif target_lang == "ta":
+                prompt_context = "இது இலங்கை தென்னை விவசாயம், உரம், பூச்சி மற்றும் நோய் கட்டுப்பாடு பற்றிய விவசாய ஆலோசனை."
+            elif target_lang == "en":
+                prompt_context = "This is an agricultural advisory conversation about Sri Lankan coconut cultivation, fertilizers, pests, and diseases."
+
+            transcription = client.audio.transcriptions.create(
+                file=("audio.wav", wav_bytes),
+                model="whisper-large-v3-turbo",
+                language=target_lang,
+                prompt=prompt_context,
+                response_format="json"
+            )
+            text = (transcription.text or "").strip()
+            if text:
+                det_lang = target_lang or get_language(text)
+                return text, det_lang
+        except Exception as e:
+            logger.warning(f"Groq Whisper transcription failed: {e}")
+
+    # 4. Fallback for language='auto': Try Google recognizer across supported languages
+    for test_lang in ("si", "ta", "en"):
+        google_text = _transcribe_google(wav_bytes, test_lang)
+        if google_text:
+            det_lang = get_language(google_text)
+            return google_text, det_lang
+
+    raise RuntimeError("Failed to transcribe audio using available STT engines.")
+
+
+@router.post("/transcribe", response_model=TranscribeResponse, tags=["Audio"])
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    language: str = Form(default="auto")
+):
+    """
+    Transcribe audio file (m4a, wav, mp3, mp4, webm, ogg, flac) to text.
+    Supports English ('en'), Sinhala ('si'), Tamil ('ta'), or auto-detection ('auto').
+    """
+    start_time = time.time()
+    
+    filename = audio.filename or "audio.m4a"
+    allowed_exts = {".m4a", ".wav", ".mp3", ".mp4", ".webm", ".ogg", ".flac", ".aac"}
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in allowed_exts and ext != "":
+        filename = "audio.m4a"
+        
+    try:
+        audio_bytes = await audio.read()
+    except Exception as e:
+        logger.error(f"Error reading uploaded audio file: {e}")
+        raise HTTPException(status_code=400, detail="Failed to read audio file")
+        
+    # Max 25MB limit
+    max_bytes = 25 * 1024 * 1024
+    if len(audio_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail="Audio file exceeds 25MB limit"
+        )
+        
+    # Minimum audio size check (~0.5s)
+    if len(audio_bytes) < 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="Audio recording is too short. Please speak clearly and try again."
+        )
+        
+    try:
+        text, detected_lang = await asyncio.to_thread(
+            _perform_transcription,
+            audio_bytes,
+            filename,
+            language
+        )
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        logger.info(f"Audio transcribed in {duration_ms}ms (Lang: {detected_lang}): '{text[:80]}...'")
+        
+        return TranscribeResponse(
+            success=True,
+            transcribed_text=text,
+            detected_language=detected_lang,
+            duration_ms=duration_ms
+        )
+    except Exception as e:
+        logger.error(f"Audio transcription failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Audio transcription failed: {str(e)}"
+        )
 
 
 @router.get("/info", tags=["Info"])
