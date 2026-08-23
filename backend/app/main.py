@@ -4,7 +4,7 @@ Provides REST API endpoints for mobile and web clients
 Updated with 82 CRI Reference Images
 """
 
-from fastapi import FastAPI, HTTPException, APIRouter, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, APIRouter, UploadFile, File, Form, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 import os
 import time
 import asyncio
+import hashlib
 from dotenv import load_dotenv
 import logging
 
@@ -239,7 +240,7 @@ async def health_check():
 
 
 @router.post("/ask", response_model=AnswerResponse, tags=["Advisory"])
-async def ask_question(request: QuestionRequest):
+async def ask_question(request: QuestionRequest, background_tasks: BackgroundTasks):
     """
     Ask a question to the SaruPol system with conversation memory support.
     
@@ -354,6 +355,10 @@ async def ask_question(request: QuestionRequest):
         if combined_rel is None:
             combined_rel, rel_level = calculate_combined_reliability(retrieval_conf, 80.0)
 
+        # Pre-warm TTS cache in background for instant audio playback
+        if answer and answer.strip():
+            background_tasks.add_task(prewarm_tts_cache, answer, target_lang)
+
         return AnswerResponse(
             success=True,
             question=display_question, # Return Sinhala translated or original question
@@ -425,7 +430,7 @@ async def translate_batch(request: TranslateBatchRequest):
 
 
 @router.post("/ask-multi", response_model=MultiLLMResponse, tags=["Advisory"])
-async def ask_multi_llm(request: MultiLLMRequest):
+async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTasks):
     """
     Multi-LLM Validation: Send the same question to 3 LLMs in parallel,
     then use a judge LLM to select the best answer.
@@ -539,6 +544,10 @@ async def ask_multi_llm(request: MultiLLMRequest):
                 consensus_score=result.get("consensus_score", 50)
             )
 
+        # Pre-warm TTS cache in background for instant audio playback
+        if best_answer and best_answer.strip():
+            background_tasks.add_task(prewarm_tts_cache, best_answer, user_lang)
+
         return MultiLLMResponse(
             success=True,
             best_answer=best_answer,
@@ -566,127 +575,242 @@ async def ask_multi_llm(request: MultiLLMRequest):
         raise HTTPException(status_code=500, detail=f"Error processing multi-LLM query: {str(e)}")
 
 
-@router.get("/tts", tags=["TTS"])
-async def text_to_speech(text: str, lang: str = "en"):
-    """
-    Generate Text-to-Speech audio stream for a given text and language.
-    Includes text preprocessing for cleaner Sinhala pronunciation.
-    """
-    if not text.strip():
-        raise HTTPException(status_code=400, detail="Text cannot be empty")
-    
+# ============ High-Performance TTS Engine & In-Memory Cache ============
+
+TTS_CACHE_MAX_ENTRIES = 300
+TTS_CACHE: dict[str, bytes] = {}
+TTS_CACHE_KEYS: list[str] = []
+_tts_lock = asyncio.Lock()
+
+
+def clean_text_for_tts(raw_text: str) -> str:
+    """Remove markdown formatting and special characters that confuse TTS."""
     import re
+    cleaned = raw_text
+    # Remove markdown bold/italic markers
+    cleaned = re.sub(r'\*{1,3}', '', cleaned)
+    # Remove markdown headers (###, ##, #)
+    cleaned = re.sub(r'^#{1,6}\s*', '', cleaned, flags=re.MULTILINE)
+    # Convert bullet points to natural pause
+    cleaned = re.sub(r'^[\s]*[-•‣]\s*', '', cleaned, flags=re.MULTILINE)
+    # Convert numbered lists to natural pause
+    cleaned = re.sub(r'^\s*\d+[.)]\s*', '', cleaned, flags=re.MULTILINE)
+    # Remove horizontal rules
+    cleaned = re.sub(r'^-{3,}$', '', cleaned, flags=re.MULTILINE)
+    # Remove URLs
+    cleaned = re.sub(r'https?://\S+', '', cleaned)
+    # Normalize multiple newlines to single pause
+    cleaned = re.sub(r'\n{2,}', '. ', cleaned)
+    cleaned = re.sub(r'\n', ', ', cleaned)
+    # Remove extra whitespace
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned)
+    return cleaned.strip()
+
+
+def sinhala_phonetic_cleanup(raw_text: str) -> str:
+    """
+    Enhance Sinhala text with phonetic adjustments for domain words,
+    fertilizer codes, and abbreviations to ensure crystal-clear enunciation.
+    """
+    import re
+    cleaned = raw_text
+    phonetic_dict = {
+        "සරුපොල්": "සරු පොල්",
+        "සරුපොල": "සරු පොල",
+        "SaruPol": "සරු පොල්",
+        "Sarupol": "සරු පොල්",
+        "sarupol": "සරු පොල්",
+        "AI": "ඒ අයි",
+        "A.I.": "ඒ අයි",
+        "A.I": "ඒ අයි",
+        "ai": "ඒ අයි",
+        "RAG": "රැග්",
+        "NPK": "එන් පී කේ",
+        "YPM": "වයි පී එම්",
+        "APM": "ඒ පී එම්",
+        "CRIC71": "සී ආර් අයි සී හැත්තෑ එක",
+        "CRIC60": "සී ආර් අයි සී හැට",
+        "CRIC65": "සී ආර් අයි සී හැට පහ",
+        "CRISL98": "සී ආර් අයි එස් එල් අනූ අට",
+    }
+    for k, v in phonetic_dict.items():
+        cleaned = re.sub(r'\b' + re.escape(k) + r'\b', v, cleaned)
+        cleaned = cleaned.replace(k, v)
+    return cleaned
+
+
+def add_sinhala_pronunciation_hints(raw_text: str) -> str:
+    """
+    Spell out English abbreviations letter-by-letter so the Tamil/English
+    TTS engine pronounces them clearly instead of garbling them.
+    """
+    import re
+    def spell_out(match):
+        code = match.group(0)
+        return ' '.join(code)
     
-    def clean_text_for_tts(raw_text: str) -> str:
-        """Remove markdown formatting and special characters that confuse TTS."""
-        cleaned = raw_text
-        # Remove markdown bold/italic markers
-        cleaned = re.sub(r'\*{1,3}', '', cleaned)
-        # Remove markdown headers (###, ##, #)
-        cleaned = re.sub(r'^#{1,6}\s*', '', cleaned, flags=re.MULTILINE)
-        # Convert bullet points to natural pause
-        cleaned = re.sub(r'^[\s]*[-•‣]\s*', '', cleaned, flags=re.MULTILINE)
-        # Convert numbered lists to just the content
-        cleaned = re.sub(r'^\s*\d+[.)]\s*', '', cleaned, flags=re.MULTILINE)
-        # Remove horizontal rules
-        cleaned = re.sub(r'^-{3,}$', '', cleaned, flags=re.MULTILINE)
-        # Remove URLs
-        cleaned = re.sub(r'https?://\S+', '', cleaned)
-        # Normalize multiple newlines to single pause
-        cleaned = re.sub(r'\n{2,}', '. ', cleaned)
-        cleaned = re.sub(r'\n', ', ', cleaned)
-        # Remove extra whitespace
-        cleaned = re.sub(r'\s{2,}', ' ', cleaned)
-        return cleaned.strip()
+    processed = re.sub(r'\b[A-Z]{2,}(?:-[A-Z0-9]+)?\b', spell_out, raw_text)
+    return processed
 
-    def sinhala_phonetic_cleanup(raw_text: str) -> str:
-        """
-        Enhance Sinhala text with phonetic adjustments for domain words,
-        fertilizer codes, and abbreviations to ensure crystal-clear enunciation.
-        """
-        cleaned = raw_text
-        phonetic_dict = {
-            "සරුපොල්": "සරු පොල්",
-            "සරුපොල": "සරු පොල",
-            "SaruPol": "සරු පොල්",
-            "Sarupol": "සරු පොල්",
-            "sarupol": "සරු පොල්",
-            "AI": "ඒ අයි",
-            "A.I.": "ඒ අයි",
-            "A.I": "ඒ අයි",
-            "ai": "ඒ අයි",
-            "RAG": "රැග්",
-            "NPK": "එන් පී කේ",
-            "YPM": "වයි පී එම්",
-            "APM": "ඒ පී එම්",
-            "CRIC71": "සී ආර් අයි සී හැත්තෑ එක",
-            "CRIC60": "සී ආර් අයි සී හැට",
-            "CRIC65": "සී ආර් අයි සී හැට පහ",
-            "CRISL98": "සී ආර් අයි එස් එල් අනූ අට",
-        }
-        for k, v in phonetic_dict.items():
-            cleaned = re.sub(r'\b' + re.escape(k) + r'\b', v, cleaned)
-            cleaned = cleaned.replace(k, v)
-        return cleaned
 
-    def add_sinhala_pronunciation_hints(raw_text: str) -> str:
-        """
-        Spell out English abbreviations letter-by-letter so the Tamil/English
-        TTS engine pronounces them clearly instead of garbling them.
-        """
-        def spell_out(match):
-            code = match.group(0)
-            return ' '.join(code)
-        
-        processed = re.sub(r'\b[A-Z]{2,}(?:-[A-Z0-9]+)?\b', spell_out, raw_text)
-        return processed
+def _get_tts_cache_key(cleaned_text: str, voice: str, rate: str) -> str:
+    """Generate MD5 hash key for TTS audio caching."""
+    raw_key = f"{voice}:{rate}:{cleaned_text}".strip()
+    return hashlib.md5(raw_key.encode("utf-8")).hexdigest()
 
-    # Clean the text
-    cleaned_text = clean_text_for_tts(text)
+
+async def generate_tts_audio_bytes(cleaned_text: str, voice: str, rate: str, lang: str) -> bytes:
+    """
+    Synthesize speech bytes with automatic in-memory LRU caching.
+    - Sinhala: Native Google Sinhala TTS (gTTS) for highest clarity.
+    - Tamil: Microsoft Edge ta-LK-KumarNeural voice (-10% rate).
+    - English: Microsoft Edge en-US-AriaNeural voice.
+    """
+    cache_key = _get_tts_cache_key(cleaned_text, voice, rate)
     
-    # 1. Sinhala -> Google Sinhala TTS (gTTS) for highest clarity and natural articulation
-    if lang.lower() == "si":
-        cleaned_text = sinhala_phonetic_cleanup(cleaned_text)
-        logger.info(f"Generating Google Sinhala TTS for text length {len(cleaned_text)}")
+    # Check in-memory cache first (0ms latency hit)
+    async with _tts_lock:
+        if cache_key in TTS_CACHE:
+            logger.info(f"TTS Cache HIT for [{lang}] (key: {cache_key[:8]})")
+            return TTS_CACHE[cache_key]
+
+    logger.info(f"TTS Cache MISS for [{lang}] (voice: {voice}, text len: {len(cleaned_text)}). Generating...")
+    
+    audio_bytes = b""
+    if lang == "si":
+        # 1. Sinhala: Native Google Sinhala TTS
         try:
             from gtts import gTTS
             import io
-            
-            def sinhala_audio_stream():
-                fp = io.BytesIO()
-                tts = gTTS(text=cleaned_text, lang='si', slow=False)
-                tts.write_to_fp(fp)
-                fp.seek(0)
-                yield fp.read()
-                
-            return StreamingResponse(sinhala_audio_stream(), media_type="audio/mpeg")
+            fp = io.BytesIO()
+            tts = gTTS(text=cleaned_text, lang='si', slow=False)
+            tts.write_to_fp(fp)
+            audio_bytes = fp.getvalue()
         except Exception as e:
-            logger.error(f"Error generating Google Sinhala TTS audio: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"TTS generation error: {str(e)}")
+            logger.warning(f"gTTS failed for Sinhala: {e}. Falling back to Edge-TTS...")
+            import edge_tts
+            communicate = edge_tts.Communicate(cleaned_text, "si-LK-SameeraNeural")
+            chunks = []
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    chunks.append(chunk["data"])
+            audio_bytes = b"".join(chunks)
+    else:
+        # 2. Tamil (KumarNeural @ -10%) & English (AriaNeural)
+        try:
+            import edge_tts
+            communicate = edge_tts.Communicate(cleaned_text, voice, rate=rate)
+            chunks = []
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    chunks.append(chunk["data"])
+            audio_bytes = b"".join(chunks)
+        except Exception as e:
+            logger.warning(f"Edge-TTS failed for {voice}: {e}. Falling back to gTTS...")
+            from gtts import gTTS
+            import io
+            gtts_lang = "ta" if lang == "ta" else "en"
+            fp = io.BytesIO()
+            tts = gTTS(text=cleaned_text, lang=gtts_lang, slow=False)
+            tts.write_to_fp(fp)
+            audio_bytes = fp.getvalue()
 
-    # 2. Tamil & English -> Microsoft Edge TTS Neural Voices
-    if lang.lower() == "ta":
-        voice = "ta-LK-KumarNeural"  # Sri Lankan Tamil voice
-        rate = "-10%"   # Slower rate for clear Tamil articulation
+    if not audio_bytes:
+        raise HTTPException(status_code=500, detail="Failed to synthesize audio: empty stream")
+
+    # Store in LRU cache
+    async with _tts_lock:
+        if cache_key not in TTS_CACHE:
+            if len(TTS_CACHE_KEYS) >= TTS_CACHE_MAX_ENTRIES:
+                oldest = TTS_CACHE_KEYS.pop(0)
+                TTS_CACHE.pop(oldest, None)
+            TTS_CACHE[cache_key] = audio_bytes
+            TTS_CACHE_KEYS.append(cache_key)
+
+    return audio_bytes
+
+
+async def prewarm_tts_cache(raw_text: str, lang: str):
+    """
+    Background worker to pre-generate and cache TTS audio immediately
+    when RAG generates an answer, ensuring 0ms audio playback when the user
+    taps the 'Listen' button.
+    """
+    if not raw_text or not raw_text.strip():
+        return
+    try:
+        cleaned_text = clean_text_for_tts(raw_text)
+        if not cleaned_text:
+            return
+            
+        lang_lower = lang.lower() if lang else "en"
+        if lang_lower == "si":
+            voice = "gTTS-si"
+            rate = "+0%"
+            cleaned_text = sinhala_phonetic_cleanup(cleaned_text)
+        elif lang_lower == "ta":
+            voice = "ta-LK-KumarNeural"
+            rate = "-10%"
+            cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
+        else:
+            voice = "en-US-AriaNeural"
+            rate = "+0%"
+
+        cache_key = _get_tts_cache_key(cleaned_text, voice, rate)
+        if cache_key in TTS_CACHE:
+            return
+            
+        logger.info(f"Proactively pre-warming TTS cache for [{lang_lower}] (len: {len(cleaned_text)})...")
+        await generate_tts_audio_bytes(cleaned_text, voice, rate, lang_lower)
+        logger.info(f"TTS cache pre-warmed successfully for [{lang_lower}] (key: {cache_key[:8]}).")
+    except Exception as e:
+        logger.warning(f"Background TTS prewarm failed: {e}")
+
+
+@router.get("/tts", tags=["TTS"])
+async def text_to_speech(text: str, lang: str = "en"):
+    """
+    Generate Text-to-Speech audio for a given text and language.
+    Features:
+    - Google Sinhala TTS (gTTS) & Microsoft KumarNeural Tamil voice (-10%)
+    - In-memory LRU cache for 0ms instantaneous repeated playback
+    - Background cache pre-warming on /ask & /ask-multi eliminating start delay
+    """
+    if not text or not text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    
+    cleaned_text = clean_text_for_tts(text)
+    if not cleaned_text:
+        raise HTTPException(status_code=400, detail="Cleaned text is empty")
+    
+    lang_lower = lang.lower() if lang else "en"
+    if lang_lower == "si":
+        voice = "gTTS-si"
+        rate = "+0%"
+        cleaned_text = sinhala_phonetic_cleanup(cleaned_text)
+    elif lang_lower == "ta":
+        voice = "ta-LK-KumarNeural"
+        rate = "-10%"
         cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
     else:
         voice = "en-US-AriaNeural"
         rate = "+0%"
         
-    logger.info(f"Generating TTS for text length {len(cleaned_text)} in voice {voice} at rate {rate}")
-    
     try:
-        import edge_tts
-        
-        async def audio_generator():
-            communicate = edge_tts.Communicate(cleaned_text, voice, rate=rate)
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    yield chunk["data"]
-                    
-        return StreamingResponse(audio_generator(), media_type="audio/mpeg")
+        audio_bytes = await generate_tts_audio_bytes(cleaned_text, voice, rate, lang_lower)
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Length": str(len(audio_bytes)),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=86400",
+            }
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating TTS audio: {str(e)}")
+        logger.error(f"Error in TTS endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"TTS generation error: {str(e)}")
 
 
