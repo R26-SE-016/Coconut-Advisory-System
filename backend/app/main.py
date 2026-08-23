@@ -4,7 +4,7 @@ Provides REST API endpoints for mobile and web clients
 Updated with 82 CRI Reference Images
 """
 
-from fastapi import FastAPI, HTTPException, APIRouter
+from fastapi import FastAPI, HTTPException, APIRouter, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
@@ -675,6 +675,66 @@ async def text_to_speech(text: str, lang: str = "en"):
     except Exception as e:
         logger.error(f"Error generating TTS audio: {str(e)}")
         raise HTTPException(status_code=500, detail=f"TTS generation error: {str(e)}")
+
+
+@router.post("/transcribe", tags=["STT"])
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    language: str = Form(default="auto")
+):
+    """
+    Speech-to-Text transcription using Groq Whisper.
+    Accepts a multipart/form-data audio file and returns the transcribed text.
+    Supported languages: 'auto', 'en', 'si', 'ta'
+    """
+    import time as _time
+    start = _time.time()
+
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    if not groq_api_key:
+        raise HTTPException(status_code=503, detail="GROQ_API_KEY not configured for transcription.")
+
+    audio_data = await audio.read()
+    if not audio_data:
+        raise HTTPException(status_code=400, detail="Audio file is empty.")
+
+    try:
+        from groq import Groq as GroqClient
+        client = GroqClient(api_key=groq_api_key)
+
+        # Whisper language hint: Groq accepts ISO 639-1 codes; 'auto' means no hint
+        whisper_lang = None if language in ("auto", "") else language
+
+        # Wrap bytes in a file-like tuple for the Groq SDK
+        filename = audio.filename or "recording.m4a"
+        audio_tuple = (filename, audio_data, audio.content_type or "audio/m4a")
+
+        transcription = await asyncio.to_thread(
+            lambda: client.audio.transcriptions.create(
+                file=audio_tuple,
+                model="whisper-large-v3-turbo",
+                language=whisper_lang,
+                response_format="verbose_json",
+            )
+        )
+
+        detected_language = getattr(transcription, "language", language if language != "auto" else "en")
+        transcribed_text = getattr(transcription, "text", "").strip()
+        duration_ms = int((_time.time() - start) * 1000)
+
+        logger.info(f"Transcription complete: lang={detected_language}, chars={len(transcribed_text)}, time={duration_ms}ms")
+
+        return {
+            "success": True,
+            "transcribed_text": transcribed_text,
+            "detected_language": detected_language,
+            "duration_ms": duration_ms,
+        }
+
+    except Exception as e:
+        logger.error(f"Transcription error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
 
 
 @router.get("/info", tags=["Info"])
