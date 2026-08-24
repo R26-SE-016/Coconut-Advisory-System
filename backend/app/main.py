@@ -16,13 +16,13 @@ import time
 import asyncio
 from dotenv import load_dotenv
 import logging
-
+import io
 import uuid
 
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_tamil, calculate_combined_reliability
+from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_sinhala, is_tamil, calculate_combined_reliability, refine_speech_transcription
 
 # Load environment variables
 load_dotenv()
@@ -168,6 +168,7 @@ class MultiLLMRequest(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     language: Optional[str] = 'en'
+    session_id: Optional[str] = None
 
 class MultiLLMResponse(BaseModel):
     success: bool
@@ -189,6 +190,7 @@ class MultiLLMResponse(BaseModel):
     early_exit: bool = False
     similarity_score: Optional[float] = None
     latency_ms: Optional[int] = None
+    session_id: Optional[str] = None
 
 
 # ============ Helper: Server-side zone/season detection ============
@@ -289,6 +291,9 @@ async def ask_question(request: QuestionRequest):
         elif request.context and "|" in request.context:
             zone = request.context.split("|")[0].strip()
 
+        # Determine target response language
+        target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
+
         # Query the RAG engine with memory using English query & session_id
         result = await asyncio.to_thread(
             get_answer_with_memory,
@@ -299,21 +304,20 @@ async def ask_question(request: QuestionRequest):
             user_context=user_context
         )
         
-        # Translate the answer back to target language if non-English
-        target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
         answer = result["answer"]
         display_question = question
+
+        # Translate answer into farmer-friendly Sinhala / Tamil using CRI domain rules
         if target_lang in ("si", "ta"):
             lang_name = 'Sinhala' if target_lang == 'si' else 'Tamil'
-            logger.info(f"Translating answer to {lang_name}...")
+            logger.info(f"Translating answer to {lang_name} using CRI vocabulary engine...")
             try:
                 answer = await asyncio.to_thread(translate_text, answer, target_lang)
                 if detected_lang == 'en' and user_lang in ('si', 'ta'):
-                    display_question = await asyncio.to_thread(translate_text, question, target_lang)
+                    display_question = await asyncio.to_thread(translate_text, question, user_lang)
                 logger.info(f"Answer successfully translated to {lang_name}.")
             except Exception as e:
                 logger.error(f"Error translating answer to {lang_name}: {str(e)}")
-                # Fallback to original English answer
         
         # Format sources
         sources = [
@@ -461,11 +465,12 @@ async def ask_multi_llm(request: MultiLLMRequest):
         user_context = " | ".join(context_parts)
 
         logger.info(f"Multi-LLM query: {rag_question} (Lang: {user_lang}) | Context: {user_context}")
+        session_id = request.session_id or str(uuid.uuid4())
 
-        # Run multi-LLM validation (parallel execution inside)
+        # Run multi-LLM validation (parallel execution inside) with conversational memory
         start_time = time.time()
         result = await asyncio.to_thread(
-            get_multi_llm_answer, rag_question, retriever, user_context
+            get_multi_llm_answer, rag_question, retriever, user_context, session_id
         )
         latency_ms = int((time.time() - start_time) * 1000)
 
@@ -550,7 +555,8 @@ async def ask_multi_llm(request: MultiLLMRequest):
             season=f"{season} ({month})",
             early_exit=early_exit,
             similarity_score=similarity_score,
-            latency_ms=latency_ms
+            latency_ms=latency_ms,
+            session_id=session_id
         )
 
     except Exception as e:
@@ -562,108 +568,66 @@ async def ask_multi_llm(request: MultiLLMRequest):
 async def text_to_speech(text: str, lang: str = "en"):
     """
     Generate Text-to-Speech audio stream for a given text and language.
-    Includes text preprocessing for cleaner Sinhala pronunciation.
+    - Sinhala ('si'): Uses Google Voice (gTTS) for natural, fast Sinhala speech.
+    - Tamil ('ta'): Uses Edge TTS Neural (ta-LK-KumarNeural).
+    - English ('en'): Uses Edge TTS Neural (en-US-AriaNeural).
     """
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
     
     import re
+    import hashlib
     
     def clean_text_for_tts(raw_text: str) -> str:
-        """Remove markdown formatting and special characters that confuse TTS."""
+        """Remove markdown formatting, bold/italics, headers and symbols for clean speech."""
         cleaned = raw_text
-        # Remove markdown bold/italic markers
-        cleaned = re.sub(r'\*{1,3}', '', cleaned)
-        # Remove markdown headers (###, ##, #)
+        cleaned = re.sub(r'[*_~`]', '', cleaned)
+        cleaned = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', cleaned)
         cleaned = re.sub(r'^#{1,6}\s*', '', cleaned, flags=re.MULTILINE)
-        # Convert bullet points to natural pause
         cleaned = re.sub(r'^[\s]*[-•‣]\s*', '', cleaned, flags=re.MULTILINE)
-        # Convert numbered lists to just the content
         cleaned = re.sub(r'^\s*\d+[.)]\s*', '', cleaned, flags=re.MULTILINE)
-        # Remove horizontal rules
         cleaned = re.sub(r'^-{3,}$', '', cleaned, flags=re.MULTILINE)
-        # Remove URLs
         cleaned = re.sub(r'https?://\S+', '', cleaned)
-        # Normalize multiple newlines to single pause
-        cleaned = re.sub(r'\n{2,}', '. ', cleaned)
-        cleaned = re.sub(r'\n', ', ', cleaned)
-        # Remove extra whitespace
+        cleaned = re.sub(r'\n+', '. ', cleaned)
         cleaned = re.sub(r'\s{2,}', ' ', cleaned)
         return cleaned.strip()
 
-    def add_sinhala_pronunciation_hints(raw_text: str) -> str:
-        """
-        Spell out English abbreviations letter-by-letter so the Sinhala
-        TTS engine pronounces them clearly instead of garbling them.
-        """
-        # Spell out common fertilizer codes letter by letter
-        def spell_out(match):
-            code = match.group(0)
-            # Add spaces between letters/digits for TTS to pronounce individually
-            return ' '.join(code)
-        
-        # Match uppercase letter+digit codes like YPM-W, APM-D, NPK, etc.
-        processed = re.sub(r'\b[A-Z]{2,}(?:-[A-Z0-9]+)?\b', spell_out, raw_text)
-        return processed
-
-    def normalize_sinhala_for_tts(raw_text: str) -> str:
-        """
-        Normalize Sinhala Unicode for better TTS pronunciation.
-        
-        Preserves Zero Width Joiner (U+200D) so conjunct consonants (e.g. ප්‍ර, ක්‍ර, ත්‍ර)
-        are pronounced properly as consonant blends.
-        
-        Maps retroflex characters (ළ, ණ, etc.) to their dental counterparts (ල, න) because
-        TTS voices often mispronounce or skip retroflex characters entirely.
-        """
-        processed = raw_text
-        
-        # Replace retroflex vowel forms and characters with dental counterparts
-        replacements = [
-            ('\u0dc5\u0dd6', '\u0dbd\u0dd6'),  # ළූ -> ලූ
-            ('\u0dc5\u0dd4', '\u0dbd\u0dd4'),  # ළු -> ලු
-            ('\u0dab\u0dd6', '\u0db1\u0dd6'),  # ණූ -> නූ
-            ('\u0dab\u0dd4', '\u0db1\u0dd4'),  # ණු -> නු
-            ('\u0dab\u0dca', '\u0db1\u0dca'),  # ණ් -> න්
-            ('\u0dc5', '\u0dbd'),              # ළ -> ල
-            ('\u0dab', '\u0db1'),              # ණ -> න
-        ]
-        
-        for search, replace in replacements:
-            processed = processed.replace(search, replace)
-            
-        # Clean up other invisible formatting codes except ZWJ (\u200d)
-        processed = processed.replace('\u200c', '')  # Remove ZWNJ
-        processed = processed.replace('\u200b', '')  # Remove ZWSP
-        processed = processed.replace('\ufeff', '')  # Remove BOM
-        processed = processed.replace('\u00a0', ' ') # Replace non-breaking space
-        
-        return processed
-
-    # Clean the text
     cleaned_text = clean_text_for_tts(text)
+    target_lang = "si" if lang.lower() == "si" else ("ta" if lang.lower() == "ta" else "en")
     
-    # Map languages to Edge TTS neural voices and rate settings
-    if lang.lower() == "si":
-        voice = "si-LK-SameeraNeural"  # Revert to SameeraNeural as default for wider baseline
-        rate = "-10%"   # Slower rate for clear Sinhala articulation
-        # Normalize Sinhala Unicode conjuncts and retroflex characters
-        cleaned_text = normalize_sinhala_for_tts(cleaned_text)
-        # Add pronunciation hints for English terms in Sinhala text
-        cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
-    elif lang.lower() == "ta":
-        voice = "ta-LK-KumarNeural"  # Sri Lankan Tamil voice
-        rate = "-10%"   # Slower rate for clear Tamil articulation
-        # Add pronunciation hints for English terms in Tamil text (same pattern as Sinhala)
-        cleaned_text = add_sinhala_pronunciation_hints(cleaned_text)
-    else:
-        voice = "en-US-AriaNeural"
-        rate = "+0%"
-        
-    logger.info(f"Generating TTS for text length {len(cleaned_text)} in voice {voice} at rate {rate}")
+    # In-memory cache for sub-millisecond instant audio playback
+    if not hasattr(app.state, "tts_cache"):
+        app.state.tts_cache = {}
     
+    cache_key = hashlib.md5(f"{target_lang}:{cleaned_text}".encode('utf-8')).hexdigest()
+    if cache_key in app.state.tts_cache:
+        cached_data = app.state.tts_cache[cache_key]
+        return StreamingResponse(io.BytesIO(cached_data), media_type="audio/mpeg")
+
+    logger.info(f"Generating TTS for lang={target_lang}, length={len(cleaned_text)}")
+
+    # 1. Sinhala: Google Voice (gTTS) - Female voice, fast and natural
+    if target_lang == "si":
+        try:
+            from gtts import gTTS
+            def _generate_gtts():
+                tts = gTTS(text=cleaned_text, lang="si", slow=False)
+                fp = io.BytesIO()
+                tts.write_to_fp(fp)
+                fp.seek(0)
+                return fp.read()
+
+            audio_bytes = await asyncio.to_thread(_generate_gtts)
+            app.state.tts_cache[cache_key] = audio_bytes
+            return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
+        except Exception as gtts_err:
+            logger.warning(f"Google Voice TTS failed: {gtts_err}. Falling back to Edge TTS...")
+
+    # 2. Tamil & English (and fallback): Edge TTS Neural
     try:
         import edge_tts
+        voice = "ta-LK-KumarNeural" if target_lang == "ta" else ("en-US-AriaNeural" if target_lang == "en" else "si-LK-ThiliniNeural")
+        rate = "-10%" if target_lang == "ta" else "+0%"
         
         async def audio_generator():
             communicate = edge_tts.Communicate(cleaned_text, voice, rate=rate)
@@ -673,8 +637,32 @@ async def text_to_speech(text: str, lang: str = "en"):
                     
         return StreamingResponse(audio_generator(), media_type="audio/mpeg")
     except Exception as e:
-        logger.error(f"Error generating TTS audio: {str(e)}")
+        logger.error(f"TTS Error: {e}")
         raise HTTPException(status_code=500, detail=f"TTS generation error: {str(e)}")
+
+
+def _convert_audio_to_wav(audio_bytes: bytes) -> io.BytesIO:
+    """Converts input audio bytes (e.g. M4A, MP3, WebM) to normalized 16kHz WAV format for speech recognition."""
+    import imageio_ffmpeg
+    import subprocess
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+    process = subprocess.Popen(
+        [
+            ffmpeg_path,
+            "-i", "pipe:0",
+            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,highpass=f=80,lowpass=f=7500",
+            "-f", "wav",
+            "-acodec", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
+            "pipe:1"
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+    wav_data, _ = process.communicate(input=audio_bytes)
+    return io.BytesIO(wav_data)
 
 
 @router.post("/transcribe", tags=["STT"])
@@ -683,57 +671,89 @@ async def transcribe_audio(
     language: str = Form(default="auto")
 ):
     """
-    Speech-to-Text transcription using Groq Whisper.
-    Accepts a multipart/form-data audio file and returns the transcribed text.
+    High-accuracy Speech-to-Text transcription with domain refinement.
+    Accepts multipart/form-data audio file (M4A, WAV, MP3, WebM).
     Supported languages: 'auto', 'en', 'si', 'ta'
     """
     import time as _time
     start = _time.time()
 
-    groq_api_key = os.getenv("GROQ_API_KEY")
-    if not groq_api_key:
-        raise HTTPException(status_code=503, detail="GROQ_API_KEY not configured for transcription.")
-
     audio_data = await audio.read()
     if not audio_data:
         raise HTTPException(status_code=400, detail="Audio file is empty.")
 
+    target_lang = language if language in ("si", "ta", "en") else "si"
+    raw_text = ""
+    engine_used = "google"
+
+    # Stage 1: Try Native Google Speech Recognition (Optimized for Sinhala si-LK, Tamil ta-LK, English en-US)
     try:
-        from groq import Groq as GroqClient
-        client = GroqClient(api_key=groq_api_key)
+        import speech_recognition as sr
+        lang_map = {"si": "si-LK", "ta": "ta-LK", "en": "en-US", "auto": "si-LK"}
+        google_lang = lang_map.get(language, "si-LK")
 
-        # Whisper language hint: Groq accepts ISO 639-1 codes; 'auto' means no hint
-        whisper_lang = None if language in ("auto", "") else language
+        def _recognize_google_sync():
+            wav_io = _convert_audio_to_wav(audio_data)
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(wav_io) as source:
+                audio_recorded = recognizer.record(source)
+                return recognizer.recognize_google(audio_recorded, language=google_lang)
 
-        # Wrap bytes in a file-like tuple for the Groq SDK
-        filename = audio.filename or "recording.m4a"
-        audio_tuple = (filename, audio_data, audio.content_type or "audio/m4a")
+        raw_text = await asyncio.to_thread(_recognize_google_sync)
+    except Exception as g_err:
+        logger.info(f"Google STT fallback to Groq Whisper: {g_err}")
+        engine_used = "groq-whisper"
 
-        transcription = await asyncio.to_thread(
-            lambda: client.audio.transcriptions.create(
-                file=audio_tuple,
-                model="whisper-large-v3-turbo",
-                language=whisper_lang,
-                response_format="verbose_json",
-            )
-        )
+    # Stage 2: Fallback to Groq Whisper Large V3 if needed
+    if not raw_text or not raw_text.strip():
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if groq_api_key:
+            try:
+                from groq import Groq as GroqClient
+                client = GroqClient(api_key=groq_api_key)
+                filename = audio.filename or "recording.m4a"
+                audio_tuple = (filename, audio_data, audio.content_type or "audio/m4a")
+                whisper_lang = "ta" if language == "ta" else ("en" if language == "en" else None)
+                whisper_prompt = (
+                    "පොල් වගාව, පොල් පැළ සඳහා පොහොර, රෝග පාලනය, කළු කුරුමිණියා, CRI Sri Lanka advisory."
+                    if target_lang == "si"
+                    else ("தென்னை பயிர்ச்செய்கை, உரம், பூச்சி கட்டுப்பாடு, CRI Sri Lanka advisory." if target_lang == "ta" else "Coconut farming in Sri Lanka, fertilization, pest control, CRI advisory.")
+                )
 
-        detected_language = getattr(transcription, "language", language if language != "auto" else "en")
-        transcribed_text = getattr(transcription, "text", "").strip()
-        duration_ms = int((_time.time() - start) * 1000)
+                transcription = await asyncio.to_thread(
+                    lambda: client.audio.transcriptions.create(
+                        file=audio_tuple,
+                        model="whisper-large-v3",
+                        language=whisper_lang,
+                        prompt=whisper_prompt,
+                        temperature=0.0,
+                        response_format="verbose_json",
+                    )
+                )
+                raw_text = getattr(transcription, "text", "").strip()
+            except Exception as w_err:
+                logger.error(f"Groq Whisper error: {w_err}")
 
-        logger.info(f"Transcription complete: lang={detected_language}, chars={len(transcribed_text)}, time={duration_ms}ms")
+    if not raw_text or not raw_text.strip():
+        raise HTTPException(status_code=500, detail="Could not recognize speech from audio. Please try speaking closer to the microphone.")
 
-        return {
-            "success": True,
-            "transcribed_text": transcribed_text,
-            "detected_language": detected_language,
-            "duration_ms": duration_ms,
-        }
+    # Stage 3: Agricultural Domain Refinement
+    try:
+        refined_text = await asyncio.to_thread(refine_speech_transcription, raw_text, target_lang)
+        final_text = refined_text.strip() if refined_text and refined_text.strip() else raw_text
+    except Exception as ref_err:
+        logger.warning(f"Speech refinement fallback: {ref_err}")
+        final_text = raw_text
 
-    except Exception as e:
-        logger.error(f"Transcription error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+    duration_ms = int((_time.time() - start) * 1000)
+    logger.info(f"Transcription complete: engine={engine_used}, lang={target_lang}, chars={len(final_text)}, time={duration_ms}ms")
+
+    return {
+        "success": True,
+        "transcribed_text": final_text,
+        "detected_language": target_lang,
+        "duration_ms": duration_ms,
+    }
 
 
 
@@ -772,13 +792,17 @@ if __name__ == "__main__":
     
     # Get configuration from environment or use defaults
     host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", 8000))
-    debug = os.getenv("DEBUG", "False").lower() == "true"
+    port = int(os.getenv("API_PORT", 5002))
+    reload_flag = os.getenv("RELOAD", "True").lower() == "true"
+    
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.abspath(os.path.join(backend_dir, "../.."))
     
     uvicorn.run(
         "app.main:app",
         host=host,
         port=port,
-        reload=debug,
+        reload=reload_flag,
+        reload_dirs=[backend_dir, root_dir] if reload_flag else None,
         log_level="info"
     )
