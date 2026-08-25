@@ -98,30 +98,25 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
 
 
 _MEMORY_QA_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka (Coconut Research Institute recommendations).
-Use the provided knowledge base context and conversation history to answer the farmer's question thoroughly, accurately, and practically.
+    ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka (Coconut Research Institute - CRI).
+Answer the farmer's question directly using ONLY the context provided.
+CRITICAL FORMATTING RULES:
+1. Be concise, practical, and farmer-focused (strictly under 100-130 words).
+2. Prioritize key actionable points: recommended treatments, fertilizer dosages (e.g. YPM/APM amounts), control steps, or disease symptoms.
+3. Use bullet points for readability. Do NOT include lengthy biological essays or repetitive background history.
 
-GUIDELINES:
-1. Provide a comprehensive, practical answer based on the knowledge base context (including irrigation systems like drip/basin/sprinkler, water requirements of 40-60 L/day up to 100 L/day under heat stress, soil moisture factors, fertilizer, and pest/disease management).
-2. When the farmer asks about a specific zone (e.g., Dry Zone, Intermediate Zone, Wet Zone) or dry period conditions, explain the appropriate practices, systems, and water management described in the knowledge base. If the farmer does not specify a zone, you may refer to the farmer's location context ({user_context}).
-3. Present your advice in clean, readable bullet points with actionable steps for Sri Lankan coconut farmers.
-4. If a question is entirely unrelated to coconut agriculture, politely clarify that you specialize in Sri Lankan coconut farming advice.
-
-Farmer Location Context:
-{user_context}
-
-Knowledge Base Context:
+Context:
 {context}"""),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{question}")
 ])
 
 
-def _contextualize_question(question: str, session_id: str, user_context: str = None) -> str:
+def _contextualize_question(question: str, session_id: str) -> str:
     """
     If there is prior history in session_id, rephrase follow-up questions
     into a complete standalone question for optimal vector retrieval while
-    intelligently handling new topic transitions, standalone keywords, and farmer zone context.
+    intelligently handling new topic transitions and standalone keywords.
     """
     history = get_session_history(session_id)
     if not history.messages:
@@ -151,16 +146,12 @@ def _contextualize_question(question: str, session_id: str, user_context: str = 
     history_text = "\n".join([f"{msg.type.capitalize()}: {msg.content[:300]}" for msg in recent_msgs])
 
     try:
-        condense_prompt = PromptTemplate.from_template("""Given the chat history between a coconut farmer and an agricultural advisor and the farmer's location context ({user_context}), rephrase the follow-up question into a clear, complete standalone question about coconut farming in Sri Lanka for knowledge base retrieval.
+        condense_prompt = PromptTemplate.from_template("""Given the chat history between a coconut farmer and an agricultural advisor, rephrase the follow-up question into a clear, complete standalone question about coconut farming in Sri Lanka for knowledge base retrieval.
 
 CRITICAL RULES:
-1. TRUE FOLLOW-UPS: If the user asks a follow-up referring to the previous discussion (e.g. "what dosage?", "how often to apply?", "when is the best time to apply?", "what about in the dry zone?", "how to prevent it?"), carry over the relevant subject, plant stage, and farmer's specific zone/season ({user_context}).
-2. NEW TOPIC / NEW PEST / SHORT QUERY: If the user introduces a new pest, disease, practice, or topic (e.g. "red palm weevil", "black beetle", "fertilizer application", "bud rot", "mother palm"), treat it as a NEW query about that topic in coconut cultivation. DO NOT contaminate the new topic with unrelated previous constraints (e.g. do NOT force "in nursery" if the new pest is red palm weevil).
-3. SHORT KEYWORDS / PHRASES: If the user inputs just a keyword or short phrase (e.g. "red palm weevil" / "රතු කුරුමිණියා", "black beetle", "dolomite"), rephrase into a comprehensive advisory question (e.g. "What is red palm weevil, its damage symptoms, and recommended control and management methods in coconut palms?").
-4. DO NOT answer the question. Return ONLY the rephrased standalone question.
-
-Farmer Location & Season:
-{user_context}
+1. TRUE FOLLOW-UPS: If the user asks a follow-up referring to the previous discussion (e.g. "what dosage?", "how often to apply?", "what about in the dry zone?", "how to prevent it?"), carry over the relevant subject and plant stage.
+2. NEW TOPIC / NEW PEST / SHORT QUERY: If the user introduces a new pest, disease, practice, or topic (e.g. "red palm weevil", "black beetle", "fertilizer application", "bud rot", "mother palm"), treat it as a NEW query about that topic in coconut cultivation. DO NOT contaminate the new topic with unrelated previous constraints.
+3. DO NOT answer the question. Return ONLY the rephrased standalone question.
 
 Chat History:
 {history}
@@ -177,11 +168,7 @@ Standalone Question:""")
             timeout=12
         )
         chain = condense_prompt | llm_condense | StrOutputParser()
-        standalone_q = chain.invoke({
-            "history": history_text,
-            "question": question,
-            "user_context": user_context or "Sri Lanka Coconut Cultivation"
-        }).strip()
+        standalone_q = chain.invoke({"history": history_text, "question": question}).strip()
         return standalone_q if standalone_q else question
     except Exception as e:
         import logging
@@ -327,8 +314,8 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         session_id = str(uuid.uuid4())
 
     # 1. Rephrase follow-up question using chat history for accurate RAG vector retrieval
-    standalone_q = _contextualize_question(question, session_id, user_context=user_context)
-    search_query = standalone_q.strip() if (standalone_q and standalone_q.strip()) else question
+    standalone_q = _contextualize_question(question, session_id)
+    search_query = f"User Context: {user_context}\nQuestion: {standalone_q}" if user_context else standalone_q
 
     # 2. Smart Query Routing: Detect topic and retrieve source documents
     question_topic = detect_question_topic(standalone_q)
@@ -336,7 +323,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
 
     if question_topic != 'general':
         try:
-            filtered_retriever = get_filtered_retriever(question_topic, retriever=retriever, k=5, fetch_k=50)
+            filtered_retriever = get_filtered_retriever(question_topic, retriever=retriever, k=4, fetch_k=50)
             if filtered_retriever is not None:
                 filtered_docs = filtered_retriever.invoke(search_query)
                 if len(filtered_docs) >= 2:
@@ -349,7 +336,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
     if not source_docs:
         try:
             if hasattr(retriever, "vectorstore"):
-                docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=5)
+                docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=4)
                 source_docs = [doc for doc, _ in docs_and_scores]
             else:
                 source_docs = retriever.invoke(search_query)
@@ -398,11 +385,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
 
     try:
         answer = with_message_history.invoke(
-            {
-                "question": effective_question,
-                "context": context,
-                "user_context": user_context or "Sri Lanka Coconut Cultivation (All Zones)"
-            },
+            {"question": effective_question, "context": context},
             config={"configurable": {"session_id": session_id}}
         )
     except Exception as primary_err:
@@ -425,11 +408,7 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
                 history_messages_key="chat_history"
             )
             answer = fb_with_history.invoke(
-                {
-                    "question": effective_question,
-                    "context": context,
-                    "user_context": user_context or "Sri Lanka Coconut Cultivation (All Zones)"
-                },
+                {"question": effective_question, "context": context},
                 config={"configurable": {"session_id": session_id}}
             )
         except Exception as fb_err:
