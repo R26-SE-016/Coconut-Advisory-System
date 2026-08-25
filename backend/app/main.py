@@ -17,13 +17,13 @@ import asyncio
 import hashlib
 from dotenv import load_dotenv
 import logging
-
+import io
 import uuid
 
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_tamil, calculate_combined_reliability
+from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_sinhala, is_tamil, calculate_combined_reliability, refine_speech_transcription
 
 # Load environment variables
 load_dotenv()
@@ -77,7 +77,7 @@ if os.path.exists(static_dir):
     app.mount("/api/v1/static", StaticFiles(directory=static_dir), name="api_v1_static")
 
 # API Router with prefix
-router = APIRouter(prefix="/api/v1")
+router = APIRouter()
 
 # Root endpoints (without prefix) for compatibility
 @app.get("/")
@@ -105,7 +105,8 @@ class QuestionRequest(BaseModel):
             }
         }
     )
-    question: str
+    question: Optional[str] = None
+    message: Optional[str] = None
     context: Optional[str] = None
     language: Optional[str] = 'en'  # 'en', 'si', or 'ta'
     session_id: Optional[str] = None
@@ -173,31 +174,33 @@ class TranscribeResponse(BaseModel):
 
 # Multi-LLM Validation models
 class MultiLLMRequest(BaseModel):
-    question: str
+    question: Optional[str] = None
+    message: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     language: Optional[str] = 'en'
+    session_id: Optional[str] = None
 
 class MultiLLMResponse(BaseModel):
     success: bool
     best_answer: str
     best_model: str
     reason: str
-    consensus_score: int
-    retrieval_confidence: float = 0.0
-    combined_reliability: float = 0.0
-    reliability_level: str = 'Moderate'
-    llama_answer: str
-    llama8b_answer: str
-    gemma_answer: Optional[str] = None
-    qwen_answer: Optional[str] = None
+    consensus_score: float
     sources: List[SourceDocument]
     images: Optional[List[ImageReference]] = []
     zone: Optional[str] = None
     season: Optional[str] = None
-    early_exit: bool = False
+    llama_answer: Optional[str] = None
+    llama8b_answer: Optional[str] = None
+    gemma_answer: Optional[str] = None
+    qwen_answer: Optional[str] = None
+    early_exit: Optional[bool] = False
     similarity_score: Optional[float] = None
-    latency_ms: Optional[int] = None
+    latency_ms: Optional[float] = None
+    retrieval_confidence: float = 0.0
+    combined_reliability: float = 0.0
+    reliability_level: str = 'Moderate'
 
 
 # ============ Helper: Server-side zone/season detection ============
@@ -226,20 +229,20 @@ def _get_month_name() -> str:
 
 # ============ API Endpoints ============
 
-router = APIRouter()
-
-
 @router.get("/health", tags=["Health"])
 async def health_check():
-    """Detailed health check"""
+    """Health check endpoint to verify backend status"""
     return {
         "status": "healthy",
-        "rag_chain_loaded": rag_chain is not None,
+        "service": "SaruPol",
+        "version": "1.0.0",
+        "rag_loaded": rag_chain is not None,
         "retriever_loaded": retriever is not None
     }
 
 
 @router.post("/ask", response_model=AnswerResponse, tags=["Advisory"])
+@router.post("/chat", response_model=AnswerResponse, tags=["Advisory"])
 async def ask_question(request: QuestionRequest, background_tasks: BackgroundTasks):
     """
     Ask a question to the SaruPol system with conversation memory support.
@@ -256,7 +259,7 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
             detail="RAG chain not loaded. Please try again later."
         )
     
-    question = request.question.strip()
+    question = (request.question or request.message or "").strip()
     user_lang = request.language.strip() if request.language else 'en'
     
     if not question:
@@ -298,6 +301,9 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
         elif request.context and "|" in request.context:
             zone = request.context.split("|")[0].strip()
 
+        # Determine target response language
+        target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
+
         # Query the RAG engine with memory using English query & session_id
         result = await asyncio.to_thread(
             get_answer_with_memory,
@@ -308,21 +314,20 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
             user_context=user_context
         )
         
-        # Translate the answer back to target language if non-English
-        target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
         answer = result["answer"]
         display_question = question
+
+        # Translate answer into farmer-friendly Sinhala / Tamil using CRI domain rules
         if target_lang in ("si", "ta"):
             lang_name = 'Sinhala' if target_lang == 'si' else 'Tamil'
-            logger.info(f"Translating answer to {lang_name}...")
+            logger.info(f"Translating answer to {lang_name} using CRI vocabulary engine...")
             try:
                 answer = await asyncio.to_thread(translate_text, answer, target_lang)
                 if detected_lang == 'en' and user_lang in ('si', 'ta'):
-                    display_question = await asyncio.to_thread(translate_text, question, target_lang)
+                    display_question = await asyncio.to_thread(translate_text, question, user_lang)
                 logger.info(f"Answer successfully translated to {lang_name}.")
             except Exception as e:
                 logger.error(f"Error translating answer to {lang_name}: {str(e)}")
-                # Fallback to original English answer
         
         # Format sources
         sources = [
@@ -438,7 +443,7 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
     if not retriever:
         raise HTTPException(status_code=503, detail="RAG system not loaded. Please try again later.")
 
-    question = request.question.strip()
+    question = (request.question or request.message or "").strip()
     user_lang = request.language.strip() if request.language else 'en'
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -474,11 +479,12 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
         user_context = " | ".join(context_parts)
 
         logger.info(f"Multi-LLM query: {rag_question} (Lang: {user_lang}) | Context: {user_context}")
+        session_id = request.session_id or str(uuid.uuid4())
 
-        # Run multi-LLM validation (parallel execution inside)
+        # Run multi-LLM validation (parallel execution inside) with conversational memory
         start_time = time.time()
         result = await asyncio.to_thread(
-            get_multi_llm_answer, rag_question, retriever, user_context
+            get_multi_llm_answer, rag_question, retriever, user_context, session_id
         )
         latency_ms = int((time.time() - start_time) * 1000)
 
@@ -567,7 +573,8 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
             season=f"{season} ({month})",
             early_exit=early_exit,
             similarity_score=similarity_score,
-            latency_ms=latency_ms
+            latency_ms=latency_ms,
+            session_id=session_id
         )
 
     except Exception as e:
@@ -869,57 +876,75 @@ def _perform_transcription(audio_bytes: bytes, filename: str, language: str = "a
     Transcribe audio bytes using a high-precision multi-engine pipeline:
     1. For Sinhala ('si') & Tamil ('ta'): Prioritizes Google Speech Recognition (si-LK / ta-LK) for 100% native Sri Lankan language accuracy.
     2. Fallback / English ('en'): Uses Groq Whisper (whisper-large-v3-turbo / whisper-large-v3) or OpenRouter STT.
+    3. Refines recognized text using agricultural domain refinement.
     """
     clean_lang = language.strip().lower() if language else "auto"
     target_lang = None if clean_lang in ("auto", "") else clean_lang
 
     # 1. Convert input audio to standard 16kHz mono WAV for maximum recognition fidelity
     wav_bytes = _convert_to_pcm_wav(audio_bytes)
+    raw_text = ""
+    det_lang = target_lang or "si"
 
     # 2. For Sinhala and Tamil, use the dedicated high-accuracy Google recognition engine first
     if target_lang in ("si", "ta"):
         google_text = _transcribe_google(wav_bytes, target_lang)
         if google_text:
             logger.info(f"Successfully transcribed via Google {target_lang.upper()} engine: '{google_text}'")
-            return google_text, target_lang
+            raw_text = google_text
+            det_lang = target_lang
 
     # 3. For auto / English or fallback: Use Groq Whisper with domain context
-    groq_key = os.getenv("GROQ_API_KEY")
-    if groq_key:
-        try:
-            from groq import Groq
-            client = Groq(api_key=groq_key)
-            
-            prompt_context = None
-            if target_lang == "si":
-                prompt_context = "මෙය ශ්‍රී ලංකාවේ පොල් වගාව, පොහොර යෙදීම, රෝග හා පළිබෝධ පාලනය පිළිබඳ කෘෂිකාර්මික උපදේශන සංවාදයකි."
-            elif target_lang == "ta":
-                prompt_context = "இது இலங்கை தென்னை விவசாயம், உரம், பூச்சி மற்றும் நோய் கட்டுப்பாடு பற்றிய விவசாய ஆலோசனை."
-            elif target_lang == "en":
-                prompt_context = "This is an agricultural advisory conversation about Sri Lankan coconut cultivation, fertilizers, pests, and diseases."
+    if not raw_text:
+        groq_key = os.getenv("GROQ_API_KEY")
+        if groq_key:
+            try:
+                from groq import Groq
+                client = Groq(api_key=groq_key)
+                
+                prompt_context = None
+                if target_lang == "si":
+                    prompt_context = "මෙය ශ්‍රී ලංකාවේ පොල් වගාව, පොහොර යෙදීම, රෝග හා පළිබෝධ පාලනය පිළිබඳ කෘෂිකාර්මික උපදේශන සංවාදයකි."
+                elif target_lang == "ta":
+                    prompt_context = "இது இலங்கை தென்னை விவசாயம், உரம், பூச்சி மற்றும் நோய் கட்டுப்பாடு பற்றிய விவசாய ஆலோசனை."
+                elif target_lang == "en":
+                    prompt_context = "This is an agricultural advisory conversation about Sri Lankan coconut cultivation, fertilizers, pests, and diseases."
 
-            transcription = client.audio.transcriptions.create(
-                file=("audio.wav", wav_bytes),
-                model="whisper-large-v3-turbo",
-                language=target_lang,
-                prompt=prompt_context,
-                response_format="json"
-            )
-            text = (transcription.text or "").strip()
-            if text:
-                det_lang = target_lang or get_language(text)
-                return text, det_lang
-        except Exception as e:
-            logger.warning(f"Groq Whisper transcription failed: {e}")
+                transcription = client.audio.transcriptions.create(
+                    file=("audio.wav", wav_bytes),
+                    model="whisper-large-v3-turbo",
+                    language=target_lang,
+                    prompt=prompt_context,
+                    response_format="json"
+                )
+                text = (transcription.text or "").strip()
+                if text:
+                    det_lang = target_lang or get_language(text)
+                    raw_text = text
+            except Exception as e:
+                logger.warning(f"Groq Whisper transcription failed: {e}")
 
     # 4. Fallback for language='auto': Try Google recognizer across supported languages
-    for test_lang in ("si", "ta", "en"):
-        google_text = _transcribe_google(wav_bytes, test_lang)
-        if google_text:
-            det_lang = get_language(google_text)
-            return google_text, det_lang
+    if not raw_text:
+        for test_lang in ("si", "ta", "en"):
+            google_text = _transcribe_google(wav_bytes, test_lang)
+            if google_text:
+                det_lang = get_language(google_text)
+                raw_text = google_text
+                break
 
-    raise RuntimeError("Failed to transcribe audio using available STT engines.")
+    if not raw_text:
+        raise RuntimeError("Failed to transcribe audio using available STT engines.")
+
+    # 5. Domain Refinement
+    try:
+        refined = refine_speech_transcription(raw_text, det_lang)
+        final_text = refined.strip() if refined and refined.strip() else raw_text
+    except Exception as ref_err:
+        logger.warning(f"Domain refinement fallback: {ref_err}")
+        final_text = raw_text
+
+    return final_text, det_lang
 
 
 @router.post("/transcribe", response_model=TranscribeResponse, tags=["Audio"])
@@ -1002,6 +1027,7 @@ async def get_info():
 # Include router with and without /api prefix for maximum compatibility
 app.include_router(router)
 app.include_router(router, prefix="/api")
+app.include_router(router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)
@@ -1020,13 +1046,17 @@ if __name__ == "__main__":
     
     # Get configuration from environment or use defaults
     host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", 8000))
-    debug = os.getenv("DEBUG", "False").lower() == "true"
+    port = int(os.getenv("API_PORT", 5002))
+    reload_flag = os.getenv("RELOAD", "True").lower() == "true"
+    
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.abspath(os.path.join(backend_dir, "../.."))
     
     uvicorn.run(
         "app.main:app",
         host=host,
         port=port,
-        reload=debug,
+        reload=reload_flag,
+        reload_dirs=[backend_dir, root_dir] if reload_flag else None,
         log_level="info"
     )
