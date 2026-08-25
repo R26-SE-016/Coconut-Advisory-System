@@ -368,8 +368,8 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         api_key=os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
         temperature=0.1,
-        max_tokens=220,
-        timeout=3.5
+        max_tokens=1000,
+        timeout=8.0
     )
 
     qa_chain = _MEMORY_QA_PROMPT | llm | StrOutputParser()
@@ -397,8 +397,8 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0.0,
-                max_tokens=300,
-                timeout=4
+                max_tokens=1000,
+                timeout=8.0
             )
             fb_chain = _MEMORY_QA_PROMPT | fb_llm | StrOutputParser()
             fb_with_history = RunnableWithMessageHistory(
@@ -838,7 +838,7 @@ Tamil:""")
         detected_lang = get_language(text)
         if detected_lang == 'ta':
             prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
-Translate the following Tamil (தமிழ்) farmer query into clear, natural, grammatically correct English for an agricultural advisory system.
+Translate the following Tamil (தமிழ்) text into clear, natural, grammatically correct English for an agricultural advisory system.
 
 CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - தாய் பனை -> mother palm
@@ -871,8 +871,8 @@ CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - விளைச்சல் -> yield
 
 RULES:
-1. Translate into a direct, fluent English sentence without commentary.
-2. Do NOT enclose output in quotation marks.
+1. COMPLETE & UNABRIDGED: Translate the full text completely without omitting any points, sections, dosages, or numbers. Maintain all bullet points, numbered lists, line breaks, and formatting.
+2. Do NOT enclose output in quotation marks and do not add commentary.
 3. Preserve codes & units (YPM-W, APM, NPK, kg, g, ml, cm).
 4. Do NOT output think tags or reasoning.
 5. Output ONLY the translated English text.
@@ -883,7 +883,7 @@ TEXT TO TRANSLATE:
 ENGLISH TRANSLATION:""")
         else:
             prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
-Translate the following Sinhala (සිංහල) farmer query into clear, natural, grammatically correct English for an agricultural advisory system.
+Translate the following Sinhala (සිංහල) text into clear, natural, grammatically correct English for an agricultural advisory system.
 
 CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - පොල් කුරුමිණියා / කළු කුරුමිණියා / අං කුරුමිණියා -> black beetle / rhinoceros beetle (Oryctes rhinoceros)
@@ -912,8 +912,8 @@ CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - යල කන්නය / මහ කන්නය -> Yala season / Maha season
 
 RULES:
-1. Translate into a direct, fluent English sentence without commentary.
-2. Do NOT enclose output in quotation marks.
+1. COMPLETE & UNABRIDGED: Translate the full text completely without omitting any points, sections, dosages, or numbers. Maintain all bullet points, numbered lists, line breaks, and formatting.
+2. Do NOT enclose output in quotation marks and do not add commentary.
 3. Preserve codes & units (YPM-W, APM, NPK, kg, g, ml, cm).
 4. Do NOT output think tags or reasoning.
 5. Output ONLY the translated English text.
@@ -923,20 +923,26 @@ TEXT TO TRANSLATE:
 
 ENGLISH TRANSLATION:""")
 
-    TRANSLATION_CASCADE = [
-        "openai/gpt-4o-mini",
-        "meta-llama/llama-3.1-8b-instruct",
-    ]
+    if target_lang in ["si", "ta"]:
+        TRANSLATION_CASCADE = [
+            "openai/gpt-4o",
+            "openai/gpt-4o-mini",
+        ]
+    else:
+        TRANSLATION_CASCADE = [
+            "openai/gpt-4o-mini",
+            "meta-llama/llama-3.1-8b-instruct",
+        ]
 
     # Calculate optimal token budget based on input length
     word_count = len(text.split()) if text else 10
     if target_lang == "en":
-        dynamic_max_tokens = int(max(20, min(80, word_count * 2)))
-        llm_timeout = 3.5
+        dynamic_max_tokens = 1000
+        llm_timeout = 8.0
     else:
         # Sinhala/Tamil Unicode requires 3-5x tokens compared to English
-        dynamic_max_tokens = int(max(300, min(900, word_count * 6)))
-        llm_timeout = 5.5
+        dynamic_max_tokens = 1500
+        llm_timeout = 10.0
 
     for model_candidate in TRANSLATION_CASCADE:
         try:
@@ -1195,8 +1201,8 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0.0,
-                max_tokens=220,
-                timeout=4
+                max_tokens=1000,
+                timeout=8.0
             )
             chain = prompt | llm | StrOutputParser()
             raw_answer = chain.invoke({"context": context[:2000], "question": question})
