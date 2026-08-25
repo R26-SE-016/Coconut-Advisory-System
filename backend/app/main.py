@@ -77,7 +77,7 @@ if os.path.exists(static_dir):
     app.mount("/api/v1/static", StaticFiles(directory=static_dir), name="api_v1_static")
 
 # API Router with prefix
-router = APIRouter(prefix="/api/v1")
+router = APIRouter()
 
 # Root endpoints (without prefix) for compatibility
 @app.get("/")
@@ -1027,6 +1027,7 @@ async def get_info():
 # Include router with and without /api prefix for maximum compatibility
 app.include_router(router)
 app.include_router(router, prefix="/api")
+app.include_router(router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)
