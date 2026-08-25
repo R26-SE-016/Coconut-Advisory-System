@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -50,7 +51,7 @@
             bottom: 0;
             z-index: -1;
             background: radial-gradient(circle at 0% 0%, #e0f2fe 0%, transparent 50%),
-                        radial-gradient(circle at 100% 100%, #dcfce7 0%, transparent 50%);
+                radial-gradient(circle at 100% 100%, #dcfce7 0%, transparent 50%);
             opacity: 0.6;
         }
 
@@ -114,9 +115,17 @@
         }
 
         @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+            0% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+            }
         }
 
         main {
@@ -144,7 +153,7 @@
             border-radius: 1.25rem;
             padding: 1.5rem;
             box-shadow: var(--shadow);
-            border: 1px solid rgba(0,0,0,0.03);
+            border: 1px solid rgba(0, 0, 0, 0.03);
         }
 
         .card-title {
@@ -199,7 +208,7 @@
             border-radius: 1.5rem;
             box-shadow: var(--shadow);
             overflow: hidden;
-            border: 1px solid rgba(0,0,0,0.03);
+            border: 1px solid rgba(0, 0, 0, 0.03);
             position: relative;
         }
 
@@ -210,11 +219,11 @@
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
-            background-image: 
+            background-image:
                 radial-gradient(#e2e8f0 0.5px, transparent 0.5px),
                 radial-gradient(#e2e8f0 0.5px, #ffffff 0.5px);
             background-size: 20px 20px;
-            background-position: 0 0,10px 10px;
+            background-position: 0 0, 10px 10px;
         }
 
         .message {
@@ -225,8 +234,15 @@
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .message.user {
@@ -255,7 +271,7 @@
             background: white;
             color: var(--text-main);
             border-bottom-left-radius: 4px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
             border: 1px solid #f1f5f9;
         }
 
@@ -388,12 +404,25 @@
             animation: wave 1.3s linear infinite;
         }
 
-        .dot:nth-child(2) { animation-delay: -1.1s; }
-        .dot:nth-child(3) { animation-delay: -0.9s; }
+        .dot:nth-child(2) {
+            animation-delay: -1.1s;
+        }
+
+        .dot:nth-child(3) {
+            animation-delay: -0.9s;
+        }
 
         @keyframes wave {
-            0%, 60%, 100% { transform: translateY(0); }
-            30% { transform: translateY(-6px); }
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+            }
+
+            30% {
+                transform: translateY(-6px);
+            }
         }
 
         /* Comparison Toggle */
@@ -414,12 +443,19 @@
             height: 24px;
         }
 
-        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
 
         .slider {
             position: absolute;
             cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background-color: #cbd5e1;
             transition: .4s;
             border-radius: 24px;
@@ -428,26 +464,41 @@
         .slider:before {
             position: absolute;
             content: "";
-            height: 18px; width: 18px;
-            left: 3px; bottom: 3px;
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
             background-color: white;
             transition: .4s;
             border-radius: 50%;
         }
 
-        input:checked + .slider { background-color: var(--primary); }
-        input:checked + .slider:before { transform: translateX(20px); }
+        input:checked+.slider {
+            background-color: var(--primary);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(20px);
+        }
 
         /* Responsive */
         @media (max-width: 900px) {
-            main { grid-template-columns: 1fr; }
-            .sidebar { display: none; } /* Hide sidebar on mobile for now */
+            main {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            /* Hide sidebar on mobile for now */
         }
     </style>
 </head>
+
 <body>
     <div class="bg-gradient"></div>
-    
+
     <header>
         <div class="logo">
             <div class="logo-icon">
@@ -506,7 +557,8 @@
                             <i data-lucide="shield-check" style="width: 12px; height: 12px;"></i>
                             Expert System Ready
                         </div>
-                        Hello! I am SaruPol, your AI Coconut Plantation Advisor. I provide verified advice based on official agricultural guidelines.
+                        Hello! I am SaruPol, your AI Coconut Plantation Advisor. I provide verified advice based on
+                        official agricultural guidelines.
                         <br><br>
                         How can I help you today?
                     </div>
@@ -515,19 +567,28 @@
 
             <div class="chat-input-wrapper">
                 <div class="input-group">
-                    <input type="text" id="user-input" placeholder="Ask about diseases, fertilizer, or irrigation..." autocomplete="off">
+                    <input type="text" id="user-input" placeholder="Ask about diseases, fertilizer, or irrigation..."
+                        autocomplete="off">
                     <button class="send-btn" id="send-btn">
                         <i data-lucide="send"></i>
                     </button>
                 </div>
-                
+
                 <div class="suggestions">
-                    <div class="suggestion-chip" onclick="askSuggestion('How should I fertilize young coconut palms?')">Young Palm Fertilizer</div>
-                    <div class="suggestion-chip" onclick="askSuggestion('How do I select a good mother palm?')">Select Mother Palm</div>
-                    <div class="suggestion-chip" onclick="askSuggestion('What is the recommended planting density for coconut?')">Planting Density</div>
-                    <div class="suggestion-chip" onclick="askSuggestion('How do I control termites in coconut nursery?')">Control Termites</div>
-                    <div class="suggestion-chip" onclick="askSuggestion('What fertilizer mixture is recommended for coconut seedlings?')">Seedling Fertilizer</div>
-                    <div class="suggestion-chip" onclick="askSuggestion('How to manage bud rot disease?')">Bud Rot Disease</div>
+                    <div class="suggestion-chip" onclick="askSuggestion('How should I fertilize young coconut palms?')">
+                        Young Palm Fertilizer</div>
+                    <div class="suggestion-chip" onclick="askSuggestion('How do I select a good mother palm?')">Select
+                        Mother Palm</div>
+                    <div class="suggestion-chip"
+                        onclick="askSuggestion('What is the recommended planting density for coconut?')">Planting
+                        Density</div>
+                    <div class="suggestion-chip"
+                        onclick="askSuggestion('How do I control termites in coconut nursery?')">Control Termites</div>
+                    <div class="suggestion-chip"
+                        onclick="askSuggestion('What fertilizer mixture is recommended for coconut seedlings?')">
+                        Seedling Fertilizer</div>
+                    <div class="suggestion-chip" onclick="askSuggestion('How to manage bud rot disease?')">Bud Rot
+                        Disease</div>
                 </div>
             </div>
         </section>
@@ -546,18 +607,18 @@
         function addMessage(content, role, meta = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
-            
+
             let metaHtml = '';
             if (role === 'assistant' && meta) {
-                const sourcesHtml = meta.sources && meta.sources.length > 0 
+                const sourcesHtml = meta.sources && meta.sources.length > 0
                     ? `<div class="rag-meta">
-                        <strong style="display: block; margin-bottom: 4px;">Verified Sources:</strong>
+                        <strong style="display: block; margin-bottom: 4px;">CRI Verified Documents:</strong>
                         ${meta.sources.map(s => `<span class="source-tag"><i data-lucide="book" style="width:10px;height:10px"></i> ${s.title}</span>`).join('')}
                        </div>`
                     : '';
-                
+
                 const contextHtml = meta.context ? `<div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px;">Applied Context: ${meta.context}</div>` : '';
-                
+
                 metaHtml = `
                     <div class="rag-badge">
                         <i data-lucide="sparkles" style="width: 12px; height: 12px;"></i>
@@ -611,7 +672,7 @@
             userInput.value = '';
             userInput.disabled = true;
             sendBtn.disabled = true;
-            
+
             showLoading();
 
             try {
@@ -653,4 +714,5 @@
         });
     </script>
 </body>
+
 </html>
