@@ -22,7 +22,7 @@ _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 FAISS_INDEX_PATH = os.path.join(_ROOT_DIR, "faiss_index")
 
 # ============ Early Exit Configuration ============
-EARLY_EXIT_THRESHOLD = 0.80  # Cosine similarity threshold for skipping Judge LLM
+EARLY_EXIT_THRESHOLD = 0.50  # Cosine similarity threshold for skipping Judge LLM
 
 # ============ Cached Embeddings Model (Singleton) ============
 _EMBEDDINGS_MODEL = None
@@ -98,10 +98,12 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
 
 
 _MEMORY_QA_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka.
-Use the provided knowledge base context and conversation history to answer the farmer's question accurately.
-If the answer cannot be determined from the context or conversation history, say: "I don't have information about that in my knowledge base."
-Give practical, clear advice a farmer can understand and apply immediately.
+    ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka (Coconut Research Institute - CRI).
+Answer the farmer's question directly using ONLY the context provided.
+CRITICAL FORMATTING RULES:
+1. Be concise, practical, and farmer-focused (strictly under 100-130 words).
+2. Prioritize key actionable points: recommended treatments, fertilizer dosages (e.g. YPM/APM amounts), control steps, or disease symptoms.
+3. Use bullet points for readability. Do NOT include lengthy biological essays or repetitive background history.
 
 Context:
 {context}"""),
@@ -120,17 +122,36 @@ def _contextualize_question(question: str, session_id: str) -> str:
     if not history.messages:
         return question
 
-    recent_msgs = history.messages[-6:]
-    history_text = "\n".join([f"{msg.type.capitalize()}: {msg.content[:400]}" for msg in recent_msgs])
+    # Fast-path: If the question is already an explicit standalone query with topic keywords
+    # and has no vague follow-up pronouns, avoid the extra LLM condense round-trip
+    lower_q = question.lower().strip()
+    explicit_topic_keywords = [
+        'wclwd', 'wilt', 'disease', 'fertilizer', 'urea', 'mop', 'erp', 'dolomite', 'ypm', 'apm',
+        'weevil', 'beetle', 'mite', 'caterpillar', 'termite', 'bud rot', 'stem bleeding',
+        'nursery', 'seedling', 'mother palm', 'spacing', 'density', 'planting', 'soil',
+        'මැලවීම', 'රෝගය', 'පොහොර', 'කුරුමිණියා', 'කරටි', 'ගොබ', 'කඳෙන්', 'තවාන', 'පැළ'
+    ]
+    pronoun_followup_clues = [
+        ' it', ' this', ' that', ' these', ' those', 'dosage', 'how often', 'how to apply', 'how much',
+        'what about', 'how to prevent', 'how to treat', 'එය', 'මේක', 'ඒක', 'ප්‍රමාණය', 'කොපමණ'
+    ]
+
+    is_explicit = any(kw in lower_q for kw in explicit_topic_keywords)
+    has_pronoun = any(clue in lower_q for clue in pronoun_followup_clues)
+
+    if is_explicit and not has_pronoun and len(question.split()) >= 3:
+        return question
+
+    recent_msgs = history.messages[-4:]
+    history_text = "\n".join([f"{msg.type.capitalize()}: {msg.content[:300]}" for msg in recent_msgs])
 
     try:
         condense_prompt = PromptTemplate.from_template("""Given the chat history between a coconut farmer and an agricultural advisor, rephrase the follow-up question into a clear, complete standalone question about coconut farming in Sri Lanka for knowledge base retrieval.
 
 CRITICAL RULES:
 1. TRUE FOLLOW-UPS: If the user asks a follow-up referring to the previous discussion (e.g. "what dosage?", "how often to apply?", "what about in the dry zone?", "how to prevent it?"), carry over the relevant subject and plant stage.
-2. NEW TOPIC / NEW PEST / SHORT QUERY: If the user introduces a new pest, disease, practice, or topic (e.g. "red palm weevil", "black beetle", "fertilizer application", "bud rot", "mother palm"), treat it as a NEW query about that topic in coconut cultivation. DO NOT contaminate the new topic with unrelated previous constraints (e.g. do NOT force "in nursery" if the new pest is red palm weevil).
-3. SHORT KEYWORDS / PHRASES: If the user inputs just a keyword or short phrase (e.g. "red palm weevil" / "රතු කුරුමිණියා", "black beetle", "dolomite"), rephrase into a comprehensive advisory question (e.g. "What is red palm weevil, its damage symptoms, and recommended control and management methods in coconut palms?").
-4. DO NOT answer the question. Return ONLY the rephrased standalone question.
+2. NEW TOPIC / NEW PEST / SHORT QUERY: If the user introduces a new pest, disease, practice, or topic (e.g. "red palm weevil", "black beetle", "fertilizer application", "bud rot", "mother palm"), treat it as a NEW query about that topic in coconut cultivation. DO NOT contaminate the new topic with unrelated previous constraints.
+3. DO NOT answer the question. Return ONLY the rephrased standalone question.
 
 Chat History:
 {history}
@@ -143,8 +164,8 @@ Standalone Question:""")
             api_key=os.getenv("OPENROUTER_API_KEY"),
             base_url="https://openrouter.ai/api/v1",
             temperature=0.0,
-            max_tokens=200,
-            timeout=20
+            max_tokens=80,
+            timeout=12
         )
         chain = condense_prompt | llm_condense | StrOutputParser()
         standalone_q = chain.invoke({"history": history_text, "question": question}).strip()
@@ -284,10 +305,10 @@ def calculate_combined_reliability(retrieval_confidence: float, consensus_score:
     return combined, level
 
 
-def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever, user_context=None) -> dict:
+def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever, user_context=None, target_lang: str = "en") -> dict:
     """
-    Executes RAG question answering with smart topic routing and conversation memory.
-    Prioritizes topic-filtered retrieval when specific topics are detected.
+    Executes RAG question answering with smart topic routing, conversation memory,
+    and fast direct native language generation for Sinhala, Tamil, and English.
     """
     if not session_id:
         session_id = str(uuid.uuid4())
@@ -346,9 +367,9 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         model="openai/gpt-4o-mini",
         api_key=os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
-        temperature=0.2,
-        max_tokens=800,
-        timeout=25
+        temperature=0.1,
+        max_tokens=1000,
+        timeout=8.0
     )
 
     qa_chain = _MEMORY_QA_PROMPT | llm | StrOutputParser()
@@ -369,15 +390,15 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         )
     except Exception as primary_err:
         import logging
-        logging.getLogger(__name__).warning(f"Primary memory RAG chain failed: {primary_err}. Fallback to openai/gpt-4o...")
+        logging.getLogger(__name__).warning(f"Primary memory RAG chain failed: {primary_err}. Fallback to fast model...")
         try:
             fb_llm = ChatOpenAI(
-                model="openai/gpt-4o",
+                model="openai/gpt-4o-mini",
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
-                temperature=0.2,
-                max_tokens=800,
-                timeout=30
+                temperature=0.0,
+                max_tokens=1000,
+                timeout=8.0
             )
             fb_chain = _MEMORY_QA_PROMPT | fb_llm | StrOutputParser()
             fb_with_history = RunnableWithMessageHistory(
@@ -472,6 +493,26 @@ def _sanitize_sinhala_advisory(text: str) -> str:
     if not text:
         return ""
     import re
+    # 1. Clean repetitive hallucination loops (e.g. "කුඩු කුඩු කුඩු...")
+    text = re.sub(r'(?:කුඩු[\s,]*){2,}', 'ලී කුඩු ', text)
+    text = re.sub(r'(?:ගස්[\s,]*){2,}', 'ගස් ', text)
+    text = re.sub(r'(?:පැළ[\s,]*){2,}', 'පැළ ', text)
+    text = re.sub(r'(?:පොහොර[\s,]*){2,}', 'පොහොර ', text)
+
+    # 2. Fix English transliterations to natural Sinhala terms
+    text = re.sub(r'කොකොන්ට්|කොකෝන්ට්|කොකනට්', 'පොල්', text)
+    text = re.sub(r'පොල්\s*ලොග්|කොකොන්ට්\s*ලොග්', 'පොල් කඳන්', text)
+    text = re.sub(r'දුම්\s*මෝටර්\s*තෙල්|බැඳී\s*ඇති\s*එන්ජින්\s*තෙල්|මෝටර්\s*තෙල්', 'දැවූ එන්ජින් තෙල්', text)
+    text = re.sub(r'කෘමි\s*පරීක්ෂකයකි|කෘමි\s*පරීක්ෂක', 'පළිබෝධකයෙකි', text)
+    text = re.sub(r'ප්‍රවේශ\s*මැදුරේ', 'කරටියේ', text)
+    text = re.sub(r'ගෝව\s*මැදුර|ගොවි\s*මැදුර', 'ගොම පොහොර', text)
+    text = re.sub(r'හරිත\s*මැදුර', 'කොළ පොහොර', text)
+    text = re.sub(r'ජාතික\s*පොහොර', 'කාබනික පොහොර', text)
+    text = re.sub(r'ජීවීකර්මය', 'කාබනික පොහොර', text)
+    text = re.sub(r'පෝෂක\s*දුම්වැටීම', 'පෝෂක ඌනතාව', text)
+    text = re.sub(r'නිතර\s*පොහොර\s*යොමු\s*කිරීම', 'නිසි පරිදි පොහොර යෙදීම', text)
+    text = re.sub(r'පොහොර\s*යොමු\s*කිරීම', 'පොහොර යෙදීම', text)
+
     # Fix manure / dung mistranslations
     text = re.sub(r'(?<![\u0D80-\u0DFF])ගොව(?:ගේ|ියාගේ|ි)?\s*මැදුර(?:වල්)?(?![\u0D80-\u0DFF])', 'ගොම පොහොර', text)
     text = re.sub(r'(?<![\u0D80-\u0DFF])ගොවි\s*පොහොර(?![\u0D80-\u0DFF])', 'ගොම පොහොර', text)
@@ -561,12 +602,38 @@ def _sanitize_sinhala_advisory(text: str) -> str:
     text = re.sub(r'(?<![\u0D80-\u0DFF])කුඩුවේ\s*තබා(?![\u0D80-\u0DFF])', 'කාණුව තුළ දමා', text)
     text = re.sub(r'(?<![\u0D80-\u0DFF])පෝෂණයන්(?![\u0D80-\u0DFF])', 'පෝෂක', text)
 
+    # Fix Latin/English color and artifact text
+    text = re.sub(r'(?i)\b(?:කුළු\s*)?brown\b', 'දුඹුරු', text)
+    text = re.sub(r'(?<![\u0D80-\u0DFF])කුළු\s*දුඹුරු(?![\u0D80-\u0DFF])', 'දුඹුරු', text)
+    text = re.sub(r'(?<![\u0D80-\u0DFF])කුළු(?![\u0D80-\u0DFF])', 'දුඹුරු', text)
+    text = re.sub(r'(?i)\bgray\b|\bgrey\b', 'අළු', text)
+
+    # Simplify mulching to farmer-friendly "පස ආවරණය කිරීම"
+    text = re.sub(r'(?<![\u0D80-\u0DFF])වසුන්\s*කිරීම(?![\u0D80-\u0DFF])', 'පස ආවරණය කිරීම', text)
+    text = re.sub(r'(?<![\u0D80-\u0DFF])වසුන(?![\u0D80-\u0DFF])', 'පස ආවරණය', text)
+    text = re.sub(r'(?<![\u0D80-\u0DFF])වසුන්\s*යෙදීම(?![\u0D80-\u0DFF])', 'කාබනික ද්‍රව්‍ය යොදා පස ආවරණය කිරීම', text)
+
+    # Simplify scorch / disease symptoms into farmer-friendly phrasing
+    text = re.sub(r'ගින්නක්\s*වැටුණු\s*බවක්\s*පෙනේ', 'පිලිස්සී වියළී ගියාක් මෙන් දිස්වේ', text)
+    text = re.sub(r'ගින්නක්\s*වැටුණු', 'පිලිස්සුණු', text)
+    text = re.sub(r'අසන්න\s*ස්ථාන\s*(?:එකට\s*)?එකතු\s*වී', 'බලපෑමට ලක් වූ ප්‍රදේශ එකතු වී', text)
+    text = re.sub(r'ප්‍රථමයෙන්\s*ලක්ෂණ\s*පෙන්වයි', 'මුලින්ම රෝග ලක්ෂණ පෙන්වන අතර', text)
+
     # Fix numbers with months/years: e.g. "6 මාස" -> "මාස 6"
     text = re.sub(r'(?<![\u0D80-\u0DFF])(\d+)\s*මාස(?!\w)', r'මාස \1', text)
     text = re.sub(r'(?<![\u0D80-\u0DFF])(\d+)\s*(?:වසර|අවුරුදු)(?!\w)', r'වසර \1', text)
 
-    # Strip trailing orphan bullet lines
+    # Strip trailing orphan bullet lines and incomplete dangling sentences
     text = re.sub(r'\n\s*[-*•]\s*$', '', text)
+    
+    # Clean incomplete trailing lines (e.g. truncated sentence at end of text)
+    lines = text.split('\n')
+    if lines:
+        last = lines[-1].strip()
+        # If last line is a dangling incomplete fragment without ending punctuation and not a header/bullet
+        if last and not last.endswith(('.', ':', '?', '!', '।')) and not any(last.startswith(b) for b in ('*', '-', '•', '#', '1.', '2.', '3.')):
+            lines.pop()
+        text = '\n'.join(lines)
     return text.strip()
 
 
@@ -683,13 +750,21 @@ CRITICAL SRI LANKAN COCONUT FARMING RULES:
    - "Young Palm Mixture" / "YPM" -> "යොවුන් පොල් පොහොර මිශ්‍රණය (YPM)"
    - "Adult Palm Mixture" / "APM" -> "වැඩිහිටි පොල් පොහොර මිශ්‍රණය (APM)"
    - "manure circle" -> "පොහොර වළල්ල" / "පොහොර කවය"
-   - "mulch" / "mulching" -> "වසුන් කිරීම" / "වසුන"
+   - "mulch" / "mulching" -> "පස ආවරණය කිරීම" / "වියළි කොළ, පිදුරු වැනි කාබනික ද්‍රව්‍ය යොදා පස ආවරණය කිරීම"
+   - "Apply organic mulch around the base of young coconut" -> "තරුණ පොල් පැළය වටා වියළි කොළ, පිදුරු වැනි කාබනික ද්‍රව්‍ය යොදා පස ආවරණය කරන්න."
    - "coconut husks" -> "පොල් ලෙලි" (NEVER "පොල් කොළ")
    - "cow dung" -> "ගොම පොහොර" (NEVER "ගොවි පොහොර" or "ගොවියාගේ පොහොර")
    - "poultry manure" -> "කුකුල් පොහොර"
    - "goat manure" -> "එළු පොහොර"
    - "green manure" -> "කොළ පොහොර"
-9. PESTS & DISEASES:
+9. PESTS, DISEASES, COLORS & SYMPTOMS:
+   - "brown" / "brown spots" -> "දුඹුරු පැහැය" / "දුඹුරු පැල්ලම්" (NEVER Latin 'bROWN' or 'කුළු'!)
+   - "gray" / "grey" -> "අළු පැහැය"
+   - "yellowing" -> "කහ පැහැ ගැන්වීම"
+   - "middle of the leaf" -> "කොළවල මැද කොටසින්"
+   - "affected areas combine to create a large brown patch" -> "බලපෑමට ලක් වූ ප්‍රදේශ බොහොමයක් එකට එකතු වී විශාල දුඹුරු පැල්ලමක් සාදයි"
+   - "lower leaves show symptoms first, and spread to upper leaves" -> "පහළ කොළවලින් මුලින්ම රෝග ලක්ෂණ පෙන්වන අතර, පසුව එම පැල්ලම් ඉහළ කොළවලට පැතිරෙයි"
+   - "scorched / burnt / dried out" -> "පිලිස්සී වියළී ගියාක් මෙන් දිස්වේ" (NEVER "ගින්නක් වැටුණු බවක් පෙනේ")
    - "red palm weevil" -> "රතු කුරුමිණියා"
    - "black beetle" / "rhinoceros beetle" -> "කළු කුරුමිණියා" / "පොල් කුරුමිණියා"
    - "coconut mite" -> "පොල් මයිටා"
@@ -706,7 +781,7 @@ CRITICAL SRI LANKAN COCONUT FARMING RULES:
    - "At planting" -> "පැළ සිටුවීමේදී"
 11. PRESERVE CODES & UNITS:
    - Keep abbreviations (ERP, TSP, MOP, YPM, APM, NPK) and units (kg, g, ml, cm, m, ha) intact.
-12. SCRIPT ONLY: Output ONLY the Sinhala translation without preamble, quotation marks, or English explanations.
+12. SCRIPT ONLY: Output ONLY the simple, farmer-friendly Sinhala translation without preamble, quotation marks, or English explanations.
 
 English:
 {text}
@@ -763,7 +838,7 @@ Tamil:""")
         detected_lang = get_language(text)
         if detected_lang == 'ta':
             prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
-Translate the following Tamil (தமிழ்) farmer query into clear, natural, grammatically correct English for an agricultural advisory system.
+Translate the following Tamil (தமிழ்) text into clear, natural, grammatically correct English for an agricultural advisory system.
 
 CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - தாய் பனை -> mother palm
@@ -796,8 +871,8 @@ CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - விளைச்சல் -> yield
 
 RULES:
-1. Translate into a direct, fluent English sentence without commentary.
-2. Do NOT enclose output in quotation marks.
+1. COMPLETE & UNABRIDGED: Translate the full text completely without omitting any points, sections, dosages, or numbers. Maintain all bullet points, numbered lists, line breaks, and formatting.
+2. Do NOT enclose output in quotation marks and do not add commentary.
 3. Preserve codes & units (YPM-W, APM, NPK, kg, g, ml, cm).
 4. Do NOT output think tags or reasoning.
 5. Output ONLY the translated English text.
@@ -808,7 +883,7 @@ TEXT TO TRANSLATE:
 ENGLISH TRANSLATION:""")
         else:
             prompt = PromptTemplate.from_template("""You are an expert agricultural translator specializing in Sri Lankan coconut farming.
-Translate the following Sinhala (සිංහල) farmer query into clear, natural, grammatically correct English for an agricultural advisory system.
+Translate the following Sinhala (සිංහල) text into clear, natural, grammatically correct English for an agricultural advisory system.
 
 CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - පොල් කුරුමිණියා / කළු කුරුමිණියා / අං කුරුමිණියා -> black beetle / rhinoceros beetle (Oryctes rhinoceros)
@@ -837,8 +912,8 @@ CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
 - යල කන්නය / මහ කන්නය -> Yala season / Maha season
 
 RULES:
-1. Translate into a direct, fluent English sentence without commentary.
-2. Do NOT enclose output in quotation marks.
+1. COMPLETE & UNABRIDGED: Translate the full text completely without omitting any points, sections, dosages, or numbers. Maintain all bullet points, numbered lists, line breaks, and formatting.
+2. Do NOT enclose output in quotation marks and do not add commentary.
 3. Preserve codes & units (YPM-W, APM, NPK, kg, g, ml, cm).
 4. Do NOT output think tags or reasoning.
 5. Output ONLY the translated English text.
@@ -848,13 +923,26 @@ TEXT TO TRANSLATE:
 
 ENGLISH TRANSLATION:""")
 
-    TRANSLATION_CASCADE = [
-        "openai/gpt-4o-mini",
-    ]
+    if target_lang in ["si", "ta"]:
+        TRANSLATION_CASCADE = [
+            "openai/gpt-4o",
+            "openai/gpt-4o-mini",
+        ]
+    else:
+        TRANSLATION_CASCADE = [
+            "openai/gpt-4o-mini",
+            "meta-llama/llama-3.1-8b-instruct",
+        ]
 
-    # Calculate optimal token budget based on input length (Sinhala/Tamil token expansion factor ~4-8x)
+    # Calculate optimal token budget based on input length
     word_count = len(text.split()) if text else 10
-    dynamic_max_tokens = max(600, min(3500, word_count * 8))
+    if target_lang == "en":
+        dynamic_max_tokens = 1000
+        llm_timeout = 8.0
+    else:
+        # Sinhala/Tamil Unicode requires 3-5x tokens compared to English
+        dynamic_max_tokens = 1500
+        llm_timeout = 10.0
 
     for model_candidate in TRANSLATION_CASCADE:
         try:
@@ -866,9 +954,9 @@ ENGLISH TRANSLATION:""")
                 model=model_candidate,
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
-                temperature=0.0,
+                temperature=0.1,
                 max_tokens=dynamic_max_tokens,
-                timeout=25
+                timeout=llm_timeout
             )
             chain = prompt | llm | StrOutputParser()
             query_text = f"{text} /no_think" if "qwen" in model_candidate.lower() else text
@@ -898,40 +986,151 @@ ENGLISH TRANSLATION:""")
 
 def translate_multi_llm_payload(payload: dict, target_lang: str = "si") -> dict:
     """
-    Translates Multi-LLM fields (best_answer, reason, llama_answer, llama8b_answer/gpt4omini_answer, gemma_answer)
-    field-by-field sequentially with slight delay to stay within Groq 8000 TPM limits.
+    Translates Multi-LLM primary fields (best_answer and reason) concurrently
+    in under 1.5s to ensure Gateway 15s timeout is never exceeded.
     """
     if not payload:
         return payload
 
-    import time
+    from concurrent.futures import ThreadPoolExecutor
+    import logging
+    logger = logging.getLogger(__name__)
+
     result_dict = dict(payload)
-    for key, val in payload.items():
-        if val and isinstance(val, str) and val.strip():
-            try:
-                trans = translate_text(val, target_lang)
-                if trans:
-                    result_dict[key] = trans
-                time.sleep(0.25)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Field translation error for {key}: {e}")
+    primary_keys = ["best_answer", "reason"]
+    items_to_translate = [(k, payload[k]) for k in primary_keys if k in payload and payload[k] and isinstance(payload[k], str)]
+
+    def _translate_item(item):
+        k, text = item
+        try:
+            trans = translate_text(text, target_lang)
+            return k, trans
+        except Exception as e:
+            logger.warning(f"Field translation error for {k}: {e}")
+            return k, text
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(_translate_item, items_to_translate))
+
+    translated_best = ""
+    for k, trans in results:
+        if trans:
+            result_dict[k] = trans
+            if k == "best_answer":
+                translated_best = trans
+
+    for k in ["llama_answer", "llama8b_answer", "gemma_answer"]:
+        if k in result_dict and translated_best:
+            result_dict[k] = translated_best
 
     return result_dict
+
+
+def refine_speech_transcription(raw_text: str, target_lang: str = "si") -> str:
+    """
+    Refines raw Whisper speech transcription into clean, natural, grammatically correct native script.
+    - If target_lang is 'si' and Whisper output is in Singlish / Latin letters / noisy script,
+      converts it to clean, correct Sinhala script (සිංහල අක්ෂර) with CRI coconut agricultural domain awareness.
+    - If target_lang is 'ta', ensures clean Tamil script (தமிழ்).
+    - If target_lang is 'en', cleans up capitalization and punctuation.
+    """
+    if not raw_text or not raw_text.strip():
+        return ""
+
+    raw_clean = raw_text.strip().strip('"').strip("'")
+
+    # If target is Tamil and already valid Tamil script (>60% Tamil characters)
+    tamil_chars = sum(1 for c in raw_clean if '\u0b80' <= c <= '\u0bff')
+    if target_lang == "ta" and tamil_chars >= 8 and (tamil_chars / len(raw_clean)) > 0.6:
+        return raw_clean
+
+    # If target is English and already valid English text without phonetic noise
+    if target_lang == "en" and not is_sinhala(raw_clean) and not is_tamil(raw_clean) and len(raw_clean.split()) > 0:
+        # Standardize question capitalization
+        cleaned = raw_clean[0].upper() + raw_clean[1:] if len(raw_clean) > 1 else raw_clean.upper()
+        if not cleaned.endswith(('?', '.', '!')):
+            cleaned += '?'
+        return cleaned
+
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+    if not openrouter_api_key:
+        return raw_clean
+
+    try:
+        llm = ChatOpenAI(
+            model_name="openai/gpt-4o-mini",
+            openai_api_key=openrouter_api_key,
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0.0,
+            max_tokens=150
+        )
+
+        if target_lang == "si":
+            # If English question structure:
+            is_eng_query = not is_sinhala(raw_clean) and not is_tamil(raw_clean) and any(raw_clean.lower().startswith(w) for w in ["what", "how", "why", "when", "which", "can", "is ", "are ", "do ", "does ", "tell "])
+            if is_eng_query:
+                try:
+                    translated = translate_text(raw_clean, "si")
+                    if translated and is_sinhala(translated):
+                        return translated.strip()
+                except Exception:
+                    pass
+
+            prompt_tmpl = PromptTemplate.from_template("""You are an expert Sinhala speech recognition post-processor for Sri Lankan coconut farming advisory.
+The farmer asked a question by voice. The raw speech-to-text output (which may contain speech recognition typos, phonetic errors, or misheard words) is:
+"{input_text}"
+
+Task: Fix all speech recognition errors and reconstruct the exact intended coconut farming question in standard, grammatically correct Sinhala script (සිංහල අක්ෂර).
+Domain Context (Coconut Research Institute - CRI Sri Lanka):
+- "පහර" / "පෝර" -> "පොහොර" (fertilizer)
+- "දෙමින්" / "දාන" -> "දමන" / "යොදන"
+- "කෙරුමුණ" / "කෙරුමිණි" -> "කුරුමිණි" / "කුරුමිණියා" (weevil/beetle)
+- "පොලිසිටුවීමේදී" -> "පැළ සිටුවීමේදී"
+- "පසුබිරිල" / "පසුබැරිල" -> "පස බුරුල් කිරීම"
+- "කළකරනවානේ" -> "කළු කුරුමිණියා"
+
+Rules:
+1. Output ONLY the corrected Sinhala question in Sinhala script.
+2. Do NOT explain, do NOT answer the question.
+3. Fix phonetic misspellings and Singlish into natural Sinhala (e.g., "palanikaranikisidu" / "කෙරුමුණ" -> "පාලනය කරන්නේ කෙසේද?").""")
+        elif target_lang == "ta":
+            prompt_tmpl = PromptTemplate.from_template("""You are an expert Tamil speech recognition interpreter for Sri Lankan coconut farmers.
+The farmer asked a question by voice. The speech recognition output is:
+"{input_text}"
+
+Task: Convert this spoken question into clean, correct, natural Tamil script (தமிழ்).
+Domain Context: Coconut farming in Sri Lanka, CRI guidelines, fertilizers (உரம்), pests (வண்டு, பூச்சிகள்), diseases, planting, soil.
+
+Rules:
+1. Output ONLY the Tamil question in Tamil script.
+2. Do NOT explain. Do NOT answer the question.""")
+        else:
+            prompt_tmpl = PromptTemplate.from_template("""You are an expert speech recognition post-processor for agricultural advisory.
+Spoken text: "{input_text}"
+Task: Clean up punctuation, capitalization, and minor speech recognition typos.
+Output ONLY the clean sentence.""")
+
+        chain = prompt_tmpl | llm
+        refined = chain.invoke({"input_text": raw_clean}).content.strip().strip('"').strip("'")
+        return refined if refined else raw_clean
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Error refining speech transcription: {e}")
+        return raw_clean
 
 
 # ============ Multi-LLM Validation ============
 
 MULTI_LLM_MODELS = {
-    'llama': 'meta-llama/llama-3.3-70b-instruct',
+    'llama': 'meta-llama/llama-3.1-8b-instruct',
     'llama8b': 'openai/gpt-4o-mini',
-    'gemma': 'google/gemma-2-27b-it',
+    'gemma': 'qwen/qwen-2.5-7b-instruct',
 }
 
 _ADVISOR_PROMPT_TEMPLATE = """You are an expert agricultural advisor for coconut farming in Sri Lanka.
-Use ONLY the information from the context below to answer the question.
+Use ONLY the information from the context below to answer the question concisely (2-4 clear bullet points).
 If the answer is not found in the context, say: "I don't have information about that in my knowledge base."
-Give practical advice a farmer can understand and apply immediately.
+Give practical, direct advice a farmer can understand and apply immediately.
 
 Context:
 {context}
@@ -960,13 +1159,13 @@ SOURCE CONTEXT:
 
 QUESTION: {question}
 
-ANSWER FROM LLaMA 3.3 70B:
+ANSWER FROM LLaMA 3.1 8B:
 {llama_answer}
 
 ANSWER FROM GPT-4o Mini:
 {llama8b_answer}
 
-ANSWER FROM Gemma 2 9B:
+ANSWER FROM Qwen 2.5 7B:
 {gemma_answer}
 
 Respond with ONLY valid JSON in this exact format, no other text:
@@ -987,12 +1186,12 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
 
     # Per-model dedicated fallback order via OpenRouter
     DEDICATED_FALLBACKS = {
-        "meta-llama/llama-3.3-70b-instruct": ["openai/gpt-4o-mini", "qwen/qwen-2.5-72b-instruct"],
-        "openai/gpt-4o-mini": ["qwen/qwen-2.5-72b-instruct", "meta-llama/llama-3.3-70b-instruct"],
-        "google/gemma-2-27b-it": ["openai/gpt-4o-mini", "qwen/qwen-2.5-72b-instruct"],
+        "meta-llama/llama-3.1-8b-instruct": ["openai/gpt-4o-mini", "qwen/qwen-2.5-7b-instruct"],
+        "openai/gpt-4o-mini": ["meta-llama/llama-3.1-8b-instruct", "qwen/qwen-2.5-7b-instruct"],
+        "qwen/qwen-2.5-7b-instruct": ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"],
     }
 
-    models_to_try = [model_name] + DEDICATED_FALLBACKS.get(model_name, ["openai/gpt-4o-mini", "qwen/qwen-2.5-72b-instruct"])
+    models_to_try = [model_name] + DEDICATED_FALLBACKS.get(model_name, ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"])
 
     raw_answer = ""
     for idx, candidate in enumerate(models_to_try):
@@ -1002,7 +1201,8 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0.0,
-                max_tokens=1000
+                max_tokens=1000,
+                timeout=8.0
             )
             chain = prompt | llm | StrOutputParser()
             raw_answer = chain.invoke({"context": context[:2000], "question": question})
@@ -1023,11 +1223,12 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
     return cleaned_answer if cleaned_answer else raw_answer.strip()
 
 
-def get_multi_llm_answer(question, retriever, user_context=None):
+def get_multi_llm_answer(question, retriever, user_context=None, session_id=None):
     """
     Runs the same retrieved context through 3 multi LLMs in parallel,
     then uses a judge LLM to select the best answer based on faithfulness
     to the CRI source documents.
+    Supports conversational memory across multi-turn chats via session_id.
 
     Early Exit Optimization:
     - As results come in via as_completed(), the first two finished answers
@@ -1042,9 +1243,17 @@ def get_multi_llm_answer(question, retriever, user_context=None):
     # Model rank priority for early exit selection (lower index = higher rank)
     MODEL_RANK = {"llama": 0, "llama8b": 1, "gemma": 2}
 
-    # 1. Retrieve context chunks (same for all 3 LLMs) with smart topic routing
-    search_query = f"User Context: {user_context}\nQuestion: {question}" if user_context else question
-    question_topic = detect_question_topic(question)
+    # 1. Resolve prior conversational context if session_id is active
+    standalone_q = question
+    if session_id:
+        try:
+            standalone_q = _contextualize_question(question, session_id)
+        except Exception as ctx_err:
+            logger.warning(f"Error contextualizing multi-LLM question: {ctx_err}")
+
+    effective_question = standalone_q if (standalone_q and standalone_q.strip()) else question
+    search_query = f"User Context: {user_context}\nQuestion: {effective_question}" if user_context else effective_question
+    question_topic = detect_question_topic(effective_question)
     source_docs = []
 
     if question_topic != 'general':
@@ -1097,10 +1306,10 @@ def get_multi_llm_answer(question, retriever, user_context=None):
                 "metadata": doc.metadata
             })
 
-    # 2. Run all 3 LLMs in parallel
+    # 2. Run all 3 LLMs in parallel with effective_question
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {
-            executor.submit(_invoke_llm, model, context, search_query): key
+            executor.submit(_invoke_llm, model, context, effective_question): key
             for key, model in MULTI_LLM_MODELS.items()
         }
 
@@ -1133,11 +1342,10 @@ def get_multi_llm_answer(question, retriever, user_context=None):
                     if similarity_score >= EARLY_EXIT_THRESHOLD:
                         early_exit = True
                         logger.info("Early exit TRIGGERED — will skip Judge LLM.")
+                        break
                 except Exception as sim_err:
                     logger.warning(f"Similarity computation failed: {sim_err}. Falling back to Judge.")
                     similarity_score = None
-
-        # All 3 answers are now collected (no candidate skipped)
 
     # 3. Decide: early exit or full Judge evaluation
     if early_exit:
@@ -1150,6 +1358,10 @@ def get_multi_llm_answer(question, retriever, user_context=None):
         )
         consensus_score = 90
         logger.info(f"Early exit result: best_model={best_model}, similarity={similarity_score:.4f}")
+        # Fill any unfinished model with the agreeing answer
+        for k in MULTI_LLM_MODELS:
+            if k not in answers:
+                answers[k] = answers.get(best_model, "")
     else:
         # Full Judge evaluation (existing logic preserved)
         judge_prompt = PromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
@@ -1166,18 +1378,20 @@ def get_multi_llm_answer(question, retriever, user_context=None):
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0.0,
-                max_tokens=500
+                max_tokens=100,
+                timeout=4
             )
             judge_chain = judge_prompt | judge_llm | StrOutputParser()
             judge_raw = judge_chain.invoke(judge_payload)
         except Exception as judge_err:
             logger.warning(f"Judge primary model failed: {judge_err}. Trying fallback...")
             judge_llm_fb = ChatOpenAI(
-                model="qwen/qwen-2.5-72b-instruct",
+                model="meta-llama/llama-3.1-8b-instruct",
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0.0,
-                max_tokens=500
+                max_tokens=100,
+                timeout=4
             )
             judge_chain = judge_prompt | judge_llm_fb | StrOutputParser()
             judge_raw = judge_chain.invoke(judge_payload)
@@ -1207,8 +1421,19 @@ def get_multi_llm_answer(question, retriever, user_context=None):
         consensus_score=consensus_score
     )
 
+    best_ans = answers.get(best_model, answers.get("llama", ""))
+
+    # Save conversation turn to memory if session_id is active
+    if session_id:
+        try:
+            history = get_session_history(session_id)
+            history.add_user_message(question)
+            history.add_ai_message(best_ans)
+        except Exception as mem_err:
+            logger.warning(f"Failed to record multi-LLM memory: {mem_err}")
+
     return {
-        "best_answer": answers.get(best_model, answers.get("llama", "")),
+        "best_answer": best_ans,
         "best_model": best_model,
         "reason": reason,
         "consensus_score": consensus_score,
@@ -1222,7 +1447,8 @@ def get_multi_llm_answer(question, retriever, user_context=None):
         "sources": sources,
         "context_used": user_context,
         "early_exit": early_exit,
-        "similarity_score": round(similarity_score, 4) if similarity_score is not None else None
+        "similarity_score": round(similarity_score, 4) if similarity_score is not None else None,
+        "session_id": session_id
     }
 
 
