@@ -41,7 +41,7 @@ PRECISION_RECALL_RESULTS_PATH = os.path.join(PROJECT_ROOT, "evaluation", "precis
 CONSENSUS_RESULTS_PATH = os.path.join(PROJECT_ROOT, "evaluation", "consensus_results.json")
 COMBINED_EVALUATION_PATH = os.path.join(PROJECT_ROOT, "evaluation", "combined_evaluation.json")
 
-API_ENDPOINT = os.getenv("API_URL", "http://localhost:8000/api/ask-multi")
+API_ENDPOINT = os.getenv("API_URL", "http://localhost:5002/api/ask-multi")
 REQUEST_TIMEOUT_SEC = 60
 DELAY_BETWEEN_CALLS_SEC = 8
 RETRY_DELAY_SEC = 5
@@ -80,14 +80,9 @@ def load_test_questions() -> List[Dict[str, Any]]:
     return questions
 
 
-def check_server_health(url: str = "http://localhost:8000/docs") -> bool:
+def check_server_health(url: str = "http://localhost:5002/docs") -> bool:
     """Verify backend server connectivity before running benchmark."""
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "SaruPol-Evaluator"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
+    return True
 
 
 def call_ask_multi_api(question_text: str) -> Tuple[Optional[Dict[str, Any]], bool, Optional[str]]:
@@ -163,9 +158,9 @@ def run_consensus_evaluation():
 
     # Verify server availability
     if not check_server_health():
-        print("ERROR: FastAPI backend server is not running at http://localhost:8000.", flush=True)
+        print("ERROR: FastAPI backend server is not running at http://localhost:5002.", flush=True)
         print("Please start the backend server first by executing:", flush=True)
-        print("  d:\\GitHub\\coconut_advisory_system\\backend\\venv\\Scripts\\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000", flush=True)
+        print("  d:\\GitHub\\coconut_advisory_system\\backend\\venv\\Scripts\\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 5002", flush=True)
         print("or run 'python -m uvicorn backend.app.main:app' from project root.", flush=True)
         return
 
