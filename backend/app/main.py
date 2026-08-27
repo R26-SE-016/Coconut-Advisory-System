@@ -180,6 +180,7 @@ class MultiLLMRequest(BaseModel):
     longitude: Optional[float] = None
     language: Optional[str] = 'en'
     session_id: Optional[str] = None
+    context: Optional[str] = None
 
 class MultiLLMResponse(BaseModel):
     success: bool
@@ -341,14 +342,15 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
 
         # Find semantically relevant CRI reference images using question + answer context
         raw_images = await asyncio.to_thread(find_relevant_images, rag_question, result.get("answer", ""), top_k=2)
-        images = [
-            ImageReference(
-                url=img["url"],
-                caption=img["caption"],
-                source=img["source"]
-            )
-            for img in raw_images
-        ]
+        images = []
+        for img in raw_images:
+            cap = img["caption"]
+            if target_lang in ("si", "ta") and cap:
+                try:
+                    cap = await asyncio.to_thread(translate_text, cap, target_lang)
+                except Exception as e:
+                    logger.error(f"Error translating caption: {e}")
+            images.append(ImageReference(url=img["url"], caption=cap, source=img["source"]))
         
         # Calculate season
         season = _determine_season()
@@ -465,18 +467,34 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
                 rag_question = question
 
         # Determine zone and season context
-        zone = None
-        season = _determine_season()
-        month = _get_month_name()
+        if request.context:
+            user_context = request.context
+            # Try to extract zone and season from the context string for the response metadata
+            try:
+                parts = user_context.split(" | ")
+                zone = parts[0] if len(parts) > 0 else None
+                season = parts[1] if len(parts) > 1 else None
+                month = ""
+                if season and "(" in season:
+                    month = season.split("(")[1].replace(")", "")
+                    season = season.split(" Season")[0]
+            except Exception:
+                zone = None
+                season = _determine_season()
+                month = _get_month_name()
+        else:
+            zone = None
+            season = _determine_season()
+            month = _get_month_name()
 
-        if request.latitude is not None and request.longitude is not None:
-            zone = _determine_zone(request.latitude, request.longitude)
+            if request.latitude is not None and request.longitude is not None:
+                zone = _determine_zone(request.latitude, request.longitude)
 
-        context_parts = []
-        if zone:
-            context_parts.append(zone)
-        context_parts.append(f"{season} Season ({month})")
-        user_context = " | ".join(context_parts)
+            context_parts = []
+            if zone:
+                context_parts.append(zone)
+            context_parts.append(f"{season} Season ({month})")
+            user_context = " | ".join(context_parts)
 
         logger.info(f"Multi-LLM query: {rag_question} (Lang: {user_lang}) | Context: {user_context}")
         session_id = request.session_id or str(uuid.uuid4())
@@ -531,14 +549,15 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
 
         # Find semantically relevant CRI reference images using question + best_answer context
         raw_images = await asyncio.to_thread(find_relevant_images, rag_question, result.get("best_answer", ""), top_k=2)
-        images = [
-            ImageReference(
-                url=img["url"],
-                caption=img["caption"],
-                source=img["source"]
-            )
-            for img in raw_images
-        ]
+        images = []
+        for img in raw_images:
+            cap = img["caption"]
+            if user_lang in ("si", "ta") and cap:
+                try:
+                    cap = await asyncio.to_thread(translate_text, cap, user_lang)
+                except Exception as e:
+                    logger.error(f"Error translating caption: {e}")
+            images.append(ImageReference(url=img["url"], caption=cap, source=img["source"]))
 
         # Calculate combined reliability
         retrieval_conf = result.get("retrieval_confidence", 0.85)

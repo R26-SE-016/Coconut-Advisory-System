@@ -507,6 +507,9 @@
             <span>SaruPol</span>
         </div>
         <div class="header-actions">
+            <div id="context-badge" class="badge-status" style="background: #e0f2fe; color: #0284c7; font-size: 0.75rem;">
+                📍 Detecting location...
+            </div>
             <div class="badge-status">
                 <div class="pulse"></div>
                 RAG Engine Online
@@ -525,6 +528,7 @@
                     <div class="form-group">
                         <label>Agricultural Zone</label>
                         <select id="zone-select">
+                            <option value="auto">Auto (GPS)</option>
                             <option value="Dry Zone">Dry Zone</option>
                             <option value="Wet Zone">Wet Zone</option>
                             <option value="Intermediate Zone">Intermediate Zone</option>
@@ -533,6 +537,7 @@
                     <div class="form-group">
                         <label>Current Season</label>
                         <select id="season-select">
+                            <option value="auto">Auto (Date)</option>
                             <option value="Maha Season">Maha Season</option>
                             <option value="Yala Season">Yala Season</option>
                         </select>
@@ -603,6 +608,59 @@
         const sendBtn = document.getElementById('send-btn');
         const zoneSelect = document.getElementById('zone-select');
         const seasonSelect = document.getElementById('season-select');
+        const contextBadge = document.getElementById('context-badge');
+
+        let userLat = null;
+        let userLon = null;
+        let gpsZone = 'Unknown Zone';
+
+        function determineZone(lat, lon) {
+            if (lat >= 5.9 && lat <= 7.5 && lon >= 79.8 && lon <= 80.6) return 'Wet Zone';
+            if (lat >= 5.9 && lat <= 8.0 && lon >= 79.8 && lon <= 81.2) return 'Intermediate Zone';
+            if (lat >= 5.5 && lat <= 10.0 && lon >= 79.5 && lon <= 82.0) return 'Dry Zone';
+            return 'Unknown Zone';
+        }
+
+        function determineSeasonAndMonth() {
+            const date = new Date();
+            const month = date.getMonth() + 1;
+            const monthName = date.toLocaleString('default', { month: 'long' });
+            let season = 'Maha';
+            if (month >= 5 && month <= 9) season = 'Yala';
+            return { season, monthName };
+        }
+
+        function updateContextBadge() {
+            let z = zoneSelect.value === 'auto' ? gpsZone : zoneSelect.value;
+            let s = seasonSelect.value === 'auto' ? determineSeasonAndMonth().season : seasonSelect.value.replace(' Season', '');
+            
+            if (zoneSelect.value !== 'auto' || seasonSelect.value !== 'auto') {
+                contextBadge.innerHTML = `📍 ${z} | ${s} (Demo Mode)`;
+                contextBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+                contextBadge.style.color = '#B45309';
+            } else {
+                contextBadge.innerHTML = `📍 ${z} | ${s} (${determineSeasonAndMonth().monthName})`;
+                contextBadge.style.background = '#e0f2fe';
+                contextBadge.style.color = '#0284c7';
+            }
+        }
+
+        zoneSelect.addEventListener('change', updateContextBadge);
+        seasonSelect.addEventListener('change', updateContextBadge);
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                userLat = pos.coords.latitude;
+                userLon = pos.coords.longitude;
+                gpsZone = determineZone(userLat, userLon);
+                updateContextBadge();
+            }, err => {
+                console.log('GPS error:', err);
+                gpsZone = 'Unknown Zone';
+                updateContextBadge();
+            });
+        }
+        updateContextBadge();
 
         function addMessage(content, role, meta = null) {
             const messageDiv = document.createElement('div');
@@ -664,9 +722,37 @@
             const question = userInput.value.trim();
             if (!question) return;
 
-            const zone = zoneSelect.value;
-            const season = seasonSelect.value;
-            const fullContext = `Farmer in ${zone} during ${season}.`;
+            let effectiveZone = zoneSelect.value;
+            let effectiveSeason = seasonSelect.value;
+            let effectiveLat = userLat;
+            let effectiveLon = userLon;
+
+            const { season: currentSeason, monthName: currentMonth } = determineSeasonAndMonth();
+
+            if (effectiveZone === 'auto') {
+                effectiveZone = gpsZone;
+            } else if (effectiveZone === 'Wet Zone') {
+                effectiveLat = 6.9271; effectiveLon = 79.8612;
+            } else if (effectiveZone === 'Intermediate Zone') {
+                effectiveLat = 7.2906; effectiveLon = 80.6337;
+            } else if (effectiveZone === 'Dry Zone') {
+                effectiveLat = 8.3114; effectiveLon = 80.4037;
+            }
+
+            let monthStr = currentMonth;
+            if (effectiveSeason === 'auto') {
+                effectiveSeason = currentSeason;
+            } else if (effectiveSeason === 'Yala Season') {
+                effectiveSeason = 'Yala';
+                monthStr = 'July';
+            } else if (effectiveSeason === 'Maha Season') {
+                effectiveSeason = 'Maha';
+                monthStr = 'December';
+            } else {
+                effectiveSeason = effectiveSeason.replace(' Season', '');
+            }
+
+            const fullContext = `${effectiveZone} | ${effectiveSeason} Season (${monthStr})`;
 
             addMessage(question, 'user');
             userInput.value = '';
@@ -681,7 +767,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         question: question,
-                        context: fullContext
+                        context: fullContext,
+                        latitude: effectiveLat,
+                        longitude: effectiveLon
                     })
                 });
 

@@ -1,16 +1,16 @@
 {
-  "timestamp": "2026-08-21T03:47:26.601278+00:00",
+  "timestamp": "2026-08-26T06:42:59.064559+00:00",
   "evaluation_name": "SaruPol RAG Retrieval & Multi-LLM Consensus Combined Evaluation",
   "summary": {
     "total_questions": 20,
     "average_precision_at_4": 0.625,
-    "average_consensus_score": 90.0,
-    "both_high_count": 11,
+    "average_consensus_score": 85.25,
+    "both_high_count": 12,
     "both_low_count": 0,
-    "mismatches_high_retrieval_low_val": 0,
-    "mismatches_low_retrieval_high_val": 9,
-    "aligned_cases": 11,
-    "system_self_awareness_score": 0.55
+    "mismatches_high_retrieval_low_val": 1,
+    "mismatches_low_retrieval_high_val": 7,
+    "aligned_cases": 12,
+    "system_self_awareness_score": 0.6
   },
   "combined_results": [
     {
@@ -23,7 +23,7 @@
       "consensus_level": "High",
       "best_model": "llama",
       "early_exit": true,
-      "latency_ms": 3977,
+      "latency_ms": 3471.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -35,9 +35,9 @@
       "retrieval_level": "Poor",
       "consensus_score": 90,
       "consensus_level": "High",
-      "best_model": "llama",
+      "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 2138,
+      "latency_ms": 7376.0,
       "alignment_type": "mismatch_low_retrieval_high_val",
       "alignment_label": "[X] Low Retrieval, High Val"
     },
@@ -51,7 +51,7 @@
       "consensus_level": "High",
       "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 767,
+      "latency_ms": 4315.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -65,7 +65,7 @@
       "consensus_level": "High",
       "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 965,
+      "latency_ms": 5170.0,
       "alignment_type": "mismatch_low_retrieval_high_val",
       "alignment_label": "[X] Low Retrieval, High Val"
     },
@@ -77,9 +77,9 @@
       "retrieval_level": "High",
       "consensus_score": 90,
       "consensus_level": "High",
-      "best_model": "llama8b",
+      "best_model": "llama",
       "early_exit": true,
-      "latency_ms": 875,
+      "latency_ms": 1854.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -93,7 +93,7 @@
       "consensus_level": "High",
       "best_model": "llama",
       "early_exit": true,
-      "latency_ms": 305,
+      "latency_ms": 2126.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -105,9 +105,9 @@
       "retrieval_level": "Poor",
       "consensus_score": 90,
       "consensus_level": "High",
-      "best_model": "llama",
+      "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 254,
+      "latency_ms": 7836.0,
       "alignment_type": "mismatch_low_retrieval_high_val",
       "alignment_label": "[X] Low Retrieval, High Val"
     },
@@ -121,7 +121,7 @@
       "consensus_level": "High",
       "best_model": "llama",
       "early_exit": true,
-      "latency_ms": 280,
+      "latency_ms": 1680.0,
       "alignment_type": "mismatch_low_retrieval_high_val",
       "alignment_label": "[X] Low Retrieval, High Val"
     },
@@ -135,7 +135,7 @@
       "consensus_level": "High",
       "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 296,
+      "latency_ms": 5237.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -145,11 +145,11 @@
       "short_title": "Wet zone planting season",
       "precision_at_4": 1.0,
       "retrieval_level": "Perfect",
-      "consensus_score": 90,
+      "consensus_score": 100,
       "consensus_level": "High",
       "best_model": "llama",
-      "early_exit": true,
-      "latency_ms": 252,
+      "early_exit": false,
+      "latency_ms": 3792.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -159,11 +159,11 @@
       "short_title": "Black beetle control",
       "precision_at_4": 1.0,
       "retrieval_level": "Perfect",
-      "consensus_score": 90,
+      "consensus_score": 80,
       "consensus_level": "High",
       "best_model": "llama",
-      "early_exit": true,
-      "latency_ms": 252,
+      "early_exit": false,
+      "latency_ms": 4547.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -173,13 +173,13 @@
       "short_title": "Bearing palm fertilizer",
       "precision_at_4": 1.0,
       "retrieval_level": "Perfect",
-      "consensus_score": 90,
-      "consensus_level": "High",
+      "consensus_score": 75,
+      "consensus_level": "Moderate",
       "best_model": "llama",
-      "early_exit": true,
-      "latency_ms": 266,
-      "alignment_type": "aligned_high",
-      "alignment_label": "[OK] High Alignment"
+      "early_exit": false,
+      "latency_ms": 4874.0,
+      "alignment_type": "mismatch_high_retrieval_low_val",
+      "alignment_label": "[!] High Retrieval, Mod/Low Val"
     },
     {
       "id": 13,
@@ -191,7 +191,7 @@
       "consensus_level": "High",
       "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 458,
+      "latency_ms": 4993.0,
       "alignment_type": "mismatch_low_retrieval_high_val",
       "alignment_label": "[X] Low Retrieval, High Val"
     },
@@ -203,9 +203,9 @@
       "retrieval_level": "Poor",
       "consensus_score": 90,
       "consensus_level": "High",
-      "best_model": "llama",
+      "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 501,
+      "latency_ms": 3962.0,
       "alignment_type": "mismatch_low_retrieval_high_val",
       "alignment_label": "[X] Low Retrieval, High Val"
     },
@@ -217,9 +217,9 @@
       "retrieval_level": "Perfect",
       "consensus_score": 90,
       "consensus_level": "High",
-      "best_model": "llama",
+      "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 307,
+      "latency_ms": 6199.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -229,13 +229,13 @@
       "short_title": "Seedling water management",
       "precision_at_4": 0.5,
       "retrieval_level": "Moderate",
-      "consensus_score": 90,
-      "consensus_level": "High",
+      "consensus_score": 50,
+      "consensus_level": "Moderate",
       "best_model": "llama",
-      "early_exit": true,
-      "latency_ms": 524,
-      "alignment_type": "mismatch_low_retrieval_high_val",
-      "alignment_label": "[X] Low Retrieval, High Val"
+      "early_exit": false,
+      "latency_ms": 5598.0,
+      "alignment_type": "aligned_moderate",
+      "alignment_label": "[OK] Moderate Alignment"
     },
     {
       "id": 17,
@@ -247,7 +247,7 @@
       "consensus_level": "High",
       "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 257,
+      "latency_ms": 4647.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     },
@@ -257,13 +257,13 @@
       "short_title": "Plesispa beetle control",
       "precision_at_4": 0.5,
       "retrieval_level": "Moderate",
-      "consensus_score": 90,
-      "consensus_level": "High",
-      "best_model": "llama8b",
-      "early_exit": true,
-      "latency_ms": 281,
-      "alignment_type": "mismatch_low_retrieval_high_val",
-      "alignment_label": "[X] Low Retrieval, High Val"
+      "consensus_score": 50,
+      "consensus_level": "Moderate",
+      "best_model": "llama",
+      "early_exit": false,
+      "latency_ms": 4413.0,
+      "alignment_type": "aligned_moderate",
+      "alignment_label": "[OK] Moderate Alignment"
     },
     {
       "id": 19,
@@ -273,9 +273,9 @@
       "retrieval_level": "Poor",
       "consensus_score": 90,
       "consensus_level": "High",
-      "best_model": "llama",
+      "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 620,
+      "latency_ms": 4011.0,
       "alignment_type": "mismatch_low_retrieval_high_val",
       "alignment_label": "[X] Low Retrieval, High Val"
     },
@@ -289,7 +289,7 @@
       "consensus_level": "High",
       "best_model": "llama8b",
       "early_exit": true,
-      "latency_ms": 320,
+      "latency_ms": 4485.0,
       "alignment_type": "aligned_high",
       "alignment_label": "[OK] High Alignment"
     }

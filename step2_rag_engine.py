@@ -22,7 +22,7 @@ _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 FAISS_INDEX_PATH = os.path.join(_ROOT_DIR, "faiss_index")
 
 # ============ Early Exit Configuration ============
-EARLY_EXIT_THRESHOLD = 0.50  # Cosine similarity threshold for skipping Judge LLM
+EARLY_EXIT_THRESHOLD = 0.75  # Cosine similarity threshold for skipping Judge LLM
 
 # ============ Cached Embeddings Model (Singleton) ============
 _EMBEDDINGS_MODEL = None
@@ -343,7 +343,12 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         except Exception:
             source_docs = retriever.invoke(search_query)
 
-    context = "\n\n".join(doc.page_content for doc in source_docs)
+    raw_context = "\n\n".join(doc.page_content for doc in source_docs)
+    
+    if user_context:
+        context = f"FARMER'S CURRENT CONTEXT:\n{user_context}\n\nCRITICAL RULE: If the knowledge base explicitly provides different advice for different zones/seasons (e.g. fertilizer types), you MUST strictly tailor your advice to match the farmer's context and ignore advice for other zones/seasons. However, if the knowledge base provides general advice that depends on other factors (like soil type) or applies universally, provide that general advice without forcing a zone-specific distinction.\n\nKNOWLEDGE BASE CONTEXT:\n{raw_context}"
+    else:
+        context = raw_context
 
     # Calculate average cosine similarity of the 4 retrieved chunks
     embeddings = _get_embeddings_model()
@@ -732,11 +737,12 @@ CRITICAL SRI LANKAN COCONUT FARMING RULES:
    - For palms, trees, plants, or zones, use inanimate pronouns/possessives: "ඒවායේ" / "ගස්වල" / "පැළවල" / "එහි" (e.g., "their age" -> "ඒවායේ වයස" / "ගස්වල වයස"). NEVER use human pronouns like "ඔවුන්ගේ", "ඔවුන්ට", or "ඔහුගේ"!
    - For single nouns, use "ගසේ" / "පොල් ගසේ" (NEVER "ගස්ගේ" / "ගසගේ"), "පැළයේ" (NEVER "පැළගේ"), "ශාකයේ" (NEVER "ශාකගේ").
 6. ACTION VERBS & IMPERATIVES:
-   - For instructions like "apply" (fertilizer, mulch, water), use active imperative "යොදන්න" (NEVER "යෙදෙන්න").
+   - For instructions like "apply" (fertilizer, mulch, water), use active imperative "යොදන්න" (NEVER "යෙදන්න" or "යෙදෙන්න").
    - "fertilize" / "fertilization" -> "පොහොර යෙදීම" / "පොහොර දැමීම".
    - "How should I fertilize" -> "පොහොර යෙදිය යුත්තේ කෙසේද" / "පොහොර යොදන්නේ කෙසේද".
 7. SOIL, PRACTICES & APPLICATION:
    - "soil" -> "පස" (moisten the soil -> පස තෙතමනය කරන්න, NEVER "මැදියම්").
+   - "storage" / "storage area" / "store" -> "ගබඩා ප්‍රදේශය" (NEVER "බඩු වටා").
    - "surface application" -> "මතුපිට යෙදීම" (පස මතුපිට පොහොර යෙදීම).
    - "trench application" -> "කාණු තුළ යෙදීම" / "කාණු ක්‍රමය" (පොල් ගස වටා නොගැඹුරු කාණුවක් කපා පොහොර දැමීම).
    - "nutrients" / "absorption of nutrients" -> "පෝෂක" / "පෝෂක අවශෝෂණය".
@@ -780,7 +786,8 @@ CRITICAL SRI LANKAN COCONUT FARMING RULES:
    - "2 Years" -> "වසර 2"
    - "At planting" -> "පැළ සිටුවීමේදී"
 11. PRESERVE CODES & UNITS:
-   - Keep abbreviations (ERP, TSP, MOP, YPM, APM, NPK) and units (kg, g, ml, cm, m, ha) intact.
+   - "cm" / "centimeters" -> "සෙන්ටිමීටර" (NEVER "සෙ.මී.")
+   - Keep other abbreviations (ERP, TSP, MOP, YPM, APM, NPK) and units (kg, g, ml, m, ha) intact.
 12. SCRIPT ONLY: Output ONLY the simple, farmer-friendly Sinhala translation without preamble, quotation marks, or English explanations.
 
 English:
@@ -1124,7 +1131,7 @@ Output ONLY the clean sentence.""")
 MULTI_LLM_MODELS = {
     'llama': 'meta-llama/llama-3.1-8b-instruct',
     'llama8b': 'openai/gpt-4o-mini',
-    'gemma': 'qwen/qwen-2.5-7b-instruct',
+    'gemma': 'google/gemma-2-9b-it',
 }
 
 _ADVISOR_PROMPT_TEMPLATE = """You are an expert agricultural advisor for coconut farming in Sri Lanka.
@@ -1165,7 +1172,7 @@ ANSWER FROM LLaMA 3.1 8B:
 ANSWER FROM GPT-4o Mini:
 {llama8b_answer}
 
-ANSWER FROM Qwen 2.5 7B:
+ANSWER FROM Gemma 2 9B IT:
 {gemma_answer}
 
 Respond with ONLY valid JSON in this exact format, no other text:
@@ -1186,9 +1193,9 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
 
     # Per-model dedicated fallback order via OpenRouter
     DEDICATED_FALLBACKS = {
-        "meta-llama/llama-3.1-8b-instruct": ["openai/gpt-4o-mini", "qwen/qwen-2.5-7b-instruct"],
-        "openai/gpt-4o-mini": ["meta-llama/llama-3.1-8b-instruct", "qwen/qwen-2.5-7b-instruct"],
-        "qwen/qwen-2.5-7b-instruct": ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"],
+        "meta-llama/llama-3.1-8b-instruct": ["openai/gpt-4o-mini", "google/gemma-2-9b-it"],
+        "openai/gpt-4o-mini": ["meta-llama/llama-3.1-8b-instruct", "google/gemma-2-9b-it"],
+        "google/gemma-2-9b-it": ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"],
     }
 
     models_to_try = [model_name] + DEDICATED_FALLBACKS.get(model_name, ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"])
