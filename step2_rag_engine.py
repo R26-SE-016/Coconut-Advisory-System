@@ -1026,7 +1026,7 @@ def translate_multi_llm_payload(payload: dict, target_lang: str = "si") -> dict:
             if k == "best_answer":
                 translated_best = trans
 
-    for k in ["llama_answer", "llama8b_answer", "gemma_answer"]:
+    for k in ["llama_answer", "gpt4omini_answer", "gemma_answer"]:
         if k in result_dict and translated_best:
             result_dict[k] = translated_best
 
@@ -1130,7 +1130,7 @@ Output ONLY the clean sentence.""")
 
 MULTI_LLM_MODELS = {
     'llama': 'meta-llama/llama-3.1-8b-instruct',
-    'llama8b': 'openai/gpt-4o-mini',
+    'gpt4omini': 'openai/gpt-4o-mini',
     'gemma': 'google/gemma-2-9b-it',
 }
 
@@ -1170,14 +1170,14 @@ ANSWER FROM LLaMA 3.1 8B:
 {llama_answer}
 
 ANSWER FROM GPT-4o Mini:
-{llama8b_answer}
+{gpt4omini_answer}
 
 ANSWER FROM Gemma 2 9B IT:
 {gemma_answer}
 
 Respond with ONLY valid JSON in this exact format, no other text:
 {{
-  "best_model": "llama" or "llama8b" or "gemma",
+  "best_model": "llama" or "gpt4omini" or "gemma",
   "reason": "Brief explanation of why this answer is most faithful to the CRI documents",
   "consensus_score": <number 0-100>
 }}"""
@@ -1248,7 +1248,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
     logger = logging.getLogger(__name__)
 
     # Model rank priority for early exit selection (lower index = higher rank)
-    MODEL_RANK = {"llama": 0, "llama8b": 1, "gemma": 2}
+    MODEL_RANK = {"llama": 0, "gpt4omini": 1, "gemma": 2}
 
     # 1. Resolve prior conversational context if session_id is active
     standalone_q = question
@@ -1376,7 +1376,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
             "context": context[:1500],
             "question": question,
             "llama_answer": answers.get("llama", "")[:600],
-            "llama8b_answer": answers.get("llama8b", "")[:600],
+            "gpt4omini_answer": answers.get("gpt4omini", "")[:600],
             "gemma_answer": answers.get("gemma", "")[:600]
         }
         try:
@@ -1448,7 +1448,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
         "combined_reliability": combined_reliability,
         "reliability_level": reliability_level,
         "llama_answer": answers.get("llama", ""),
-        "llama8b_answer": answers.get("llama8b", ""),
+        "gpt4omini_answer": answers.get("gpt4omini", ""),
         "gemma_answer": answers.get("gemma", ""),
         "qwen_answer": answers.get("gemma", ""),
         "sources": sources,
