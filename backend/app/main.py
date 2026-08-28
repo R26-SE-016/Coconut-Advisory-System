@@ -193,7 +193,7 @@ class MultiLLMResponse(BaseModel):
     zone: Optional[str] = None
     season: Optional[str] = None
     llama_answer: Optional[str] = None
-    llama8b_answer: Optional[str] = None
+    gpt4omini_answer: Optional[str] = None
     gemma_answer: Optional[str] = None
     qwen_answer: Optional[str] = None
     early_exit: Optional[bool] = False
@@ -509,7 +509,7 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
         # Extract fields
         best_answer = result["best_answer"]
         llama_answer = result["llama_answer"]
-        llama8b_answer = result["llama8b_answer"]
+        gpt4omini_answer = result["gpt4omini_answer"]
         gemma_answer = result.get("gemma_answer") or result.get("qwen_answer", "")
         reason = result["reason"]
         early_exit = result.get("early_exit", False)
@@ -523,7 +523,7 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
                 "best_answer": best_answer,
                 "reason": reason,
                 "llama_answer": llama_answer,
-                "llama8b_answer": llama8b_answer,
+                "gpt4omini_answer": gpt4omini_answer,
                 "gemma_answer": gemma_answer
             }
             try:
@@ -531,7 +531,7 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
                 best_answer = translated_dict.get("best_answer", best_answer)
                 reason = translated_dict.get("reason", reason)
                 llama_answer = translated_dict.get("llama_answer", llama_answer)
-                llama8b_answer = translated_dict.get("llama8b_answer", llama8b_answer)
+                gpt4omini_answer = translated_dict.get("gpt4omini_answer", gpt4omini_answer)
                 gemma_answer = translated_dict.get("gemma_answer", gemma_answer)
                 logger.info(f"Multi-LLM response fields successfully translated to {lang_name}.")
             except Exception as e:
@@ -583,7 +583,7 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
             combined_reliability=combined_rel,
             reliability_level=rel_level,
             llama_answer=llama_answer,
-            llama8b_answer=llama8b_answer,
+            gpt4omini_answer=gpt4omini_answer,
             gemma_answer=gemma_answer,
             qwen_answer=gemma_answer,
             sources=sources,
