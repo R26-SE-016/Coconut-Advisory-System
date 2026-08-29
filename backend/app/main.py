@@ -141,6 +141,9 @@ class AnswerResponse(BaseModel):
     context_used: Optional[str] = None
     session_id: Optional[str] = None
     model_used: Optional[str] = "openai/gpt-4o-mini"
+    consensus_score: Optional[int] = None
+    validated_by: Optional[str] = None
+    early_exit: Optional[bool] = None
 
 class ErrorResponse(BaseModel):
     success: bool = False
@@ -305,17 +308,38 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
         # Determine target response language
         target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
 
-        # Query the RAG engine with memory using English query & session_id
-        result = await asyncio.to_thread(
-            get_answer_with_memory,
-            rag_question,
-            session_id,
-            rag_chain,
-            retriever,
-            user_context=user_context
-        )
-        
-        answer = result["answer"]
+        # Query using Multi-LLM Validation pipeline (3 candidates + Judge)
+        # Falls back to single-model get_answer_with_memory() on timeout/failure
+        consensus_score = None
+        validated_by = None
+        early_exit_flag = None
+        used_multi_llm = False
+
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    get_multi_llm_answer, rag_question, retriever, user_context, session_id
+                ),
+                timeout=25.0
+            )
+            answer = result["best_answer"]
+            consensus_score = result.get("consensus_score")
+            validated_by = result.get("best_model")
+            early_exit_flag = result.get("early_exit", False)
+            used_multi_llm = True
+            logger.info(f"Multi-LLM validation succeeded for session [{session_id}]: best_model={validated_by}, consensus={consensus_score}, early_exit={early_exit_flag}")
+        except (asyncio.TimeoutError, Exception) as multi_err:
+            logger.warning(f"Multi-LLM validation failed/timed out for session [{session_id}]: {multi_err}. Falling back to primary model.")
+            result = await asyncio.to_thread(
+                get_answer_with_memory,
+                rag_question,
+                session_id,
+                rag_chain,
+                retriever,
+                user_context=user_context
+            )
+            answer = result["answer"]
+
         display_question = question
 
         # Translate answer into farmer-friendly Sinhala / Tamil using CRI domain rules
@@ -341,7 +365,8 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
         ]
 
         # Find semantically relevant CRI reference images using question + answer context
-        raw_images = await asyncio.to_thread(find_relevant_images, rag_question, result.get("answer", ""), top_k=2)
+        original_answer = result.get("best_answer", answer) if used_multi_llm else result.get("answer", answer)
+        raw_images = await asyncio.to_thread(find_relevant_images, rag_question, original_answer, top_k=2)
         images = []
         for img in raw_images:
             cap = img["caption"]
@@ -379,7 +404,10 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
             combined_reliability=combined_rel,
             reliability_level=rel_level,
             context_used=result.get("context_used"),
-            session_id=session_id
+            session_id=session_id,
+            consensus_score=consensus_score,
+            validated_by=validated_by,
+            early_exit=early_exit_flag
         )
         
     except Exception as e:
