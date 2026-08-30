@@ -247,15 +247,28 @@ def detect_topic(text: str) -> str:
     return 'general'
 
 
+def detect_question_topics(question: str) -> list[str]:
+    """Detects all topic tags for a user question based on keyword presence."""
+    if not question:
+        return ['general']
+    q_lower = question.lower()
+    topics = []
+    for topic, keywords in TOPIC_KEYWORDS.items():
+        if topic == 'general':
+            continue
+        if any(kw.lower() in q_lower for kw in keywords):
+            topics.append(topic)
+    return topics if topics else ['general']
+
 def detect_question_topic(question: str) -> str:
-    """Detects topic tag for a user question."""
+    """Detects primary topic tag for a user question (legacy support)."""
     return detect_topic(question)
 
 
-def get_filtered_retriever(topic: str, vector_store=None, retriever=None, k: int = 4, fetch_k: int = 100):
+def get_filtered_retriever(topic, vector_store=None, retriever=None, k: int = 4, fetch_k: int = 100):
     """
-    Returns a FAISS retriever that filters chunks matching the detected topic.
-    Prioritizes chunks relevant to the detected topic.
+    Returns a FAISS retriever that filters chunks matching the detected topic(s).
+    Prioritizes chunks relevant to the detected topic(s).
     """
     vs = vector_store
     if vs is None and retriever is not None and hasattr(retriever, 'vectorstore'):
@@ -263,9 +276,11 @@ def get_filtered_retriever(topic: str, vector_store=None, retriever=None, k: int
 
     if vs is None:
         return retriever
+        
+    topic_list = topic if isinstance(topic, list) else [topic]
 
     def topic_filter(metadata: dict) -> bool:
-        return metadata.get('topic') == topic
+        return metadata.get('topic') in topic_list
 
     return vs.as_retriever(
         search_type="similarity",
@@ -318,30 +333,40 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
     search_query = f"User Context: {user_context}\nQuestion: {standalone_q}" if user_context else standalone_q
 
     # 2. Smart Query Routing: Detect topic and retrieve source documents
-    question_topic = detect_question_topic(standalone_q)
+    effective_question = standalone_q if (standalone_q and standalone_q.strip()) else question
+    question_topics = detect_question_topics(effective_question)
     source_docs = []
 
-    if question_topic != 'general':
+    # Always do standard retrieval
+    standard_docs = []
+    try:
+        if hasattr(retriever, "vectorstore"):
+            docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=4)
+            standard_docs = [doc for doc, _ in docs_and_scores]
+        else:
+            standard_docs = retriever.invoke(search_query)
+    except Exception:
+        pass
+
+    # Do filtered retrieval if applicable
+    filtered_docs = []
+    if question_topics != ['general']:
         try:
-            filtered_retriever = get_filtered_retriever(question_topic, retriever=retriever, k=4, fetch_k=50)
+            filtered_retriever = get_filtered_retriever(question_topics, retriever=retriever, k=4, fetch_k=50)
             if filtered_retriever is not None:
                 filtered_docs = filtered_retriever.invoke(search_query)
-                if len(filtered_docs) >= 2:
-                    source_docs = filtered_docs
         except Exception as filt_err:
             import logging
             logging.getLogger(__name__).warning(f"Filtered retrieval error: {filt_err}")
 
-    # Fallback to standard similarity search if filtered retrieval yielded < 2 docs
-    if not source_docs:
-        try:
-            if hasattr(retriever, "vectorstore"):
-                docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=4)
-                source_docs = [doc for doc, _ in docs_and_scores]
-            else:
-                source_docs = retriever.invoke(search_query)
-        except Exception:
-            source_docs = retriever.invoke(search_query)
+    # Combine and deduplicate
+    seen_contents = set()
+    for doc in filtered_docs + standard_docs:
+        if doc.page_content not in seen_contents:
+            source_docs.append(doc)
+            seen_contents.add(doc.page_content)
+    
+    source_docs = source_docs[:5]
 
     raw_context = "\n\n".join(doc.page_content for doc in source_docs)
     
@@ -385,8 +410,6 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
         input_messages_key="question",
         history_messages_key="chat_history"
     )
-
-    effective_question = standalone_q if (standalone_q and standalone_q.strip()) else question
 
     try:
         answer = with_message_history.invoke(
@@ -848,7 +871,7 @@ Tamil:""")
 Translate the following Tamil (தமிழ்) text into clear, natural, grammatically correct English for an agricultural advisory system.
 
 CRITICAL SRI LANKAN COCONUT FARMING VOCABULARY:
-- தாய் பனை -> mother palm
+- தாய் පனை -> mother palm
 - உரம் -> fertilizer
 - தைல் கன்று / கன்று / தேங்காய் நாற்று -> seedling / young palm
 - கரையான் / கரையான்கள் -> termites
@@ -1026,7 +1049,7 @@ def translate_multi_llm_payload(payload: dict, target_lang: str = "si") -> dict:
             if k == "best_answer":
                 translated_best = trans
 
-    for k in ["llama_answer", "llama8b_answer", "gemma_answer"]:
+    for k in ["llama_answer", "gpt4omini_answer", "gemma_answer"]:
         if k in result_dict and translated_best:
             result_dict[k] = translated_best
 
@@ -1130,8 +1153,8 @@ Output ONLY the clean sentence.""")
 
 MULTI_LLM_MODELS = {
     'llama': 'meta-llama/llama-3.1-8b-instruct',
-    'llama8b': 'openai/gpt-4o-mini',
-    'gemma': 'google/gemma-2-9b-it',
+    'gpt4omini': 'openai/gpt-4o-mini',
+    'gemma': 'google/gemini-3.5-flash-lite',
 }
 
 _ADVISOR_PROMPT_TEMPLATE = """You are an expert agricultural advisor for coconut farming in Sri Lanka.
@@ -1170,14 +1193,14 @@ ANSWER FROM LLaMA 3.1 8B:
 {llama_answer}
 
 ANSWER FROM GPT-4o Mini:
-{llama8b_answer}
+{gpt4omini_answer}
 
 ANSWER FROM Gemma 2 9B IT:
 {gemma_answer}
 
 Respond with ONLY valid JSON in this exact format, no other text:
 {{
-  "best_model": "llama" or "llama8b" or "gemma",
+  "best_model": "llama" or "gpt4omini" or "gemma",
   "reason": "Brief explanation of why this answer is most faithful to the CRI documents",
   "consensus_score": <number 0-100>
 }}"""
@@ -1193,9 +1216,9 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
 
     # Per-model dedicated fallback order via OpenRouter
     DEDICATED_FALLBACKS = {
-        "meta-llama/llama-3.1-8b-instruct": ["openai/gpt-4o-mini", "google/gemma-2-9b-it"],
-        "openai/gpt-4o-mini": ["meta-llama/llama-3.1-8b-instruct", "google/gemma-2-9b-it"],
-        "google/gemma-2-9b-it": ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"],
+        "meta-llama/llama-3.1-8b-instruct": ["openai/gpt-4o-mini", "google/gemini-3.5-flash-lite"],
+        "openai/gpt-4o-mini": ["meta-llama/llama-3.1-8b-instruct", "google/gemini-3.5-flash-lite"],
+        "google/gemini-3.5-flash-lite": ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"],
     }
 
     models_to_try = [model_name] + DEDICATED_FALLBACKS.get(model_name, ["openai/gpt-4o-mini", "meta-llama/llama-3.1-8b-instruct"])
@@ -1212,7 +1235,7 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
                 timeout=8.0
             )
             chain = prompt | llm | StrOutputParser()
-            raw_answer = chain.invoke({"context": context[:2000], "question": question})
+            raw_answer = chain.invoke({"context": context[:1500], "question": question})
             if raw_answer and len(raw_answer.strip()) > 10:
                 break
         except Exception as err:
@@ -1248,7 +1271,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
     logger = logging.getLogger(__name__)
 
     # Model rank priority for early exit selection (lower index = higher rank)
-    MODEL_RANK = {"llama": 0, "llama8b": 1, "gemma": 2}
+    MODEL_RANK = {"llama": 0, "gpt4omini": 1, "gemma": 2}
 
     # 1. Resolve prior conversational context if session_id is active
     standalone_q = question
@@ -1260,12 +1283,12 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
 
     effective_question = standalone_q if (standalone_q and standalone_q.strip()) else question
     search_query = f"User Context: {user_context}\nQuestion: {effective_question}" if user_context else effective_question
-    question_topic = detect_question_topic(effective_question)
+    question_topics = detect_question_topics(effective_question)
     source_docs = []
 
-    if question_topic != 'general':
+    if question_topics != ['general']:
         try:
-            filtered_retriever = get_filtered_retriever(question_topic, retriever=retriever, k=4, fetch_k=50)
+            filtered_retriever = get_filtered_retriever(question_topics, retriever=retriever, k=4, fetch_k=50)
             if filtered_retriever is not None:
                 filtered_docs = filtered_retriever.invoke(search_query)
                 if len(filtered_docs) >= 2:
@@ -1376,7 +1399,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
             "context": context[:1500],
             "question": question,
             "llama_answer": answers.get("llama", "")[:600],
-            "llama8b_answer": answers.get("llama8b", "")[:600],
+            "gpt4omini_answer": answers.get("gpt4omini", "")[:600],
             "gemma_answer": answers.get("gemma", "")[:600]
         }
         try:
@@ -1448,7 +1471,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
         "combined_reliability": combined_reliability,
         "reliability_level": reliability_level,
         "llama_answer": answers.get("llama", ""),
-        "llama8b_answer": answers.get("llama8b", ""),
+        "gpt4omini_answer": answers.get("gpt4omini", ""),
         "gemma_answer": answers.get("gemma", ""),
         "qwen_answer": answers.get("gemma", ""),
         "sources": sources,
