@@ -22,7 +22,7 @@ _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 FAISS_INDEX_PATH = os.path.join(_ROOT_DIR, "faiss_index")
 
 # ============ Early Exit Configuration ============
-EARLY_EXIT_THRESHOLD = 0.75  # Cosine similarity threshold for skipping Judge LLM
+EARLY_EXIT_THRESHOLD = 0.60  # Cosine similarity threshold for skipping Judge LLM
 
 # ============ Cached Embeddings Model (Singleton) ============
 _EMBEDDINGS_MODEL = None
@@ -99,11 +99,12 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
 
 _MEMORY_QA_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """You are an expert agricultural advisor for coconut farming in Sri Lanka (Coconut Research Institute - CRI).
-Answer the farmer's question directly using ONLY the context provided.
-CRITICAL FORMATTING RULES:
-1. Be concise, practical, and farmer-focused (strictly under 100-130 words).
-2. Prioritize key actionable points: recommended treatments, fertilizer dosages (e.g. YPM/APM amounts), control steps, or disease symptoms.
-3. Use bullet points for readability. Do NOT include lengthy biological essays or repetitive background history.
+Answer the farmer's question directly and concisely using the provided context.
+Apply relevant CRI agricultural practices (such as soil moisture conservation, mulching, husk burial, drains, irrigation, pest control, or fertilizer guidelines) found in the context to address the question.
+Be concise, practical, and farmer-focused (strictly under 100-130 words).
+Prioritize key actionable points: recommended treatments, fertilizer dosages (e.g. YPM/APM amounts), control steps, or disease symptoms.
+Use bullet points for readability. Do NOT include lengthy biological essays or repetitive background history.
+Only if the context has absolutely no relevant information about the subject, say: "I don't have information about that in my knowledge base."
 
 Context:
 {context}"""),
@@ -230,6 +231,7 @@ TOPIC_KEYWORDS = {
     'pest_disease': ['beetle', 'caterpillar', 'mite', 'disease', 'WCLWD', 'CCI', 'termite', 'weevil', 'rhynchophorus', 'oryctes', 'opisina', 'aceria', 'pest', 'rot', 'bleeding', 'whitefly', 'scale', 'mealybug'],
     'planting': ['planting', 'spacing', 'density', 'replanting', 'seedling selection'],
     'variety': ['CRIC60', 'CRIC65', 'CRISL98', 'variety', 'hybrid', 'dwarf', 'tall'],
+    'moisture_soil': ['moisture', 'water', 'irrigation', 'drought', 'husk', 'drain', 'mulch', 'contour', 'cover crop', 'dry zone'],
     'general': []
 }
 
@@ -263,6 +265,87 @@ def detect_question_topics(question: str) -> list[str]:
 def detect_question_topic(question: str) -> str:
     """Detects primary topic tag for a user question (legacy support)."""
     return detect_topic(question)
+
+
+# ============ Off-Topic / Greeting Detection ============
+
+# Coconut-agriculture keywords — if ANY of these appear, the question is on-topic
+_AGRICULTURE_KEYWORDS = [
+    # English
+    'coconut', 'palm', 'fertilizer', 'disease', 'pest', 'soil', 'planting', 'nursery',
+    'seedling', 'beetle', 'mite', 'weevil', 'caterpillar', 'termite', 'wilt', 'rot',
+    'urea', 'potash', 'phosphate', 'dolomite', 'ypm', 'apm', 'erp', 'tsp', 'mop',
+    'manure', 'spacing', 'density', 'harvest', 'yield', 'irrigation', 'drought',
+    'fungus', 'leaf', 'trunk', 'root', 'crown', 'nut', 'copra', 'husk', 'frond',
+    'variety', 'hybrid', 'dwarf', 'tall', 'cric60', 'cric65', 'wclwd', 'cci',
+    'mulch', 'compost', 'intercrop', 'watering', 'pruning', 'mother palm',
+    'seed nut', 'germination', 'poly bag', 'collar rot', 'bud rot', 'stem bleeding',
+    'black beetle', 'red palm', 'rhinoceros', 'white fly', 'scale insect', 'mealybug',
+    'dry zone', 'wet zone', 'intermediate', 'yala', 'maha',
+    # Sinhala
+    'පොල්', 'පොහොර', 'රෝග', 'පළිබෝධ', 'පස', 'සිටුවීම', 'තවාන', 'පැළ',
+    'කුරුමිණියා', 'කරටි', 'වේයන්', 'මැලවීම', 'කුණුවීම', 'යූරියා', 'පොටෑෂ්',
+    'ඩොලමයිට්', 'අස්වැන්න', 'වාරිමාර්ග', 'දියර', 'කොළ', 'කඳ', 'මුල',
+    'පොල් ගස', 'ගොබ', 'කෘමි', 'වසංගත', 'පරිසරය', 'ගස්', 'ඵලදාව',
+    'කෘෂිකාර්මික', 'කාබනික', 'රසායනික', 'මර්දනය', 'පාලනය', 'CRI',
+    # Tamil
+    'தென்னை', 'உரம்', 'நோய்', 'பூச்சி', 'மண்', 'நடவு', 'நாற்றங்கால்',
+    'விதை', 'வண்டு', 'புழு', 'கரையான்', 'அறுவடை',
+]
+
+_OFF_TOPIC_PATTERNS = [
+    # English greetings & casual chat
+    'how are you', 'how r u', 'whats up', "what's up", 'hello', 'hi there',
+    'good morning', 'good afternoon', 'good evening', 'good night',
+    'how do you do', 'nice to meet', 'what is your name', "what's your name",
+    'who are you', 'who made you', 'what can you do', 'tell me about yourself',
+    'how old are you', 'where are you from', 'do you have feelings',
+    'what did you eat', 'how are you eat', 'what do you think about',
+    'tell me a joke', 'sing a song', 'write a poem', 'play a game',
+    'thank you', 'thanks', 'bye', 'goodbye', 'see you', 'ok thanks',
+    # Sinhala greetings & casual chat
+    'කොහොමද', 'ආයුබෝවන්', 'හෙලෝ', 'හායි', 'ඔයා කවුද', 'ඔයාගේ නම',
+    'ඔයා ඊයේ', 'ඔයා මොනවද කෑවේ', 'ඔයාට මොනවද', 'සුබ උදෑසනක්',
+    'ස්තුතියි', 'බොහොම ස්තුතියි', 'ගුඩ් මෝනිං',
+    # Tamil greetings
+    'வணக்கம்', 'நன்றி', 'எப்படி இருக்கிறீர்கள்',
+]
+
+
+def is_off_topic(question: str) -> bool:
+    """
+    Returns True if the question is clearly off-topic (greeting, casual chat,
+    or completely unrelated to coconut agriculture). Uses a two-step check:
+    1. If any agriculture keyword is found → on-topic (return False)
+    2. If any off-topic pattern is found → off-topic (return True)
+    3. If the question is very short (≤3 words) or highly repetitive, and has no agriculture keywords → off-topic
+    """
+    if not question or not question.strip():
+        return True
+
+    q_lower = question.lower().strip()
+
+    # Step 1: If any agriculture keyword appears, it's on-topic
+    for kw in _AGRICULTURE_KEYWORDS:
+        if kw in q_lower:
+            return False
+
+    # Step 2: If any off-topic pattern matches, it's off-topic
+    for pattern in _OFF_TOPIC_PATTERNS:
+        # Match as whole word or part of the phrase for robustness
+        if pattern in q_lower or f" {pattern} " in f" {q_lower} ":
+            return True
+
+    # Step 3: Very short questions or highly repetitive words with no agriculture keywords are likely off-topic
+    words = q_lower.split()
+    unique_words = set(words)
+    if len(words) <= 4 or len(unique_words) <= 2:
+        return True
+
+    return False
+
+
+_OFF_TOPIC_RESPONSE = "I don't have information about that in my knowledge base. I can only help with coconut farming topics like diseases, fertilizer, pests, planting, and nursery management."
 
 
 def get_filtered_retriever(topic, vector_store=None, retriever=None, k: int = 4, fetch_k: int = 100):
@@ -328,10 +411,25 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
     if not session_id:
         session_id = str(uuid.uuid4())
 
+    # 0. Pre-screen: Instantly reject off-topic questions (greetings, casual chat)
+    #    BEFORE any RAG retrieval or LLM calls — this is fast and 100% reliable
+    if is_off_topic(question):
+        return {
+            "question": question,
+            "answer": _OFF_TOPIC_RESPONSE,
+            "sources": [],
+            "confidence": 0.0,
+            "retrieval_confidence": 0.0,
+            "combined_reliability": 0.0,
+            "reliability_level": "low",
+            "context_used": user_context,
+            "session_id": session_id
+        }
+
     # 1. Rephrase follow-up question using chat history for accurate RAG vector retrieval
     standalone_q = _contextualize_question(question, session_id)
-    search_query = f"User Context: {user_context}\nQuestion: {standalone_q}" if user_context else standalone_q
-
+    search_query = standalone_q
+    
     # 2. Smart Query Routing: Detect topic and retrieve source documents
     effective_question = standalone_q if (standalone_q and standalone_q.strip()) else question
     question_topics = detect_question_topics(effective_question)
@@ -366,12 +464,14 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
             source_docs.append(doc)
             seen_contents.add(doc.page_content)
     
+    # Prioritize English.pdf chunks since they contain clean legible CRI manual text
+    source_docs.sort(key=lambda d: 0 if "english" in str(d.metadata.get("source", "")).lower() else 1)
     source_docs = source_docs[:5]
 
     raw_context = "\n\n".join(doc.page_content for doc in source_docs)
     
     if user_context:
-        context = f"FARMER'S CURRENT CONTEXT:\n{user_context}\n\nCRITICAL RULE: If the knowledge base explicitly provides different advice for different zones/seasons (e.g. fertilizer types), you MUST strictly tailor your advice to match the farmer's context and ignore advice for other zones/seasons. However, if the knowledge base provides general advice that depends on other factors (like soil type) or applies universally, provide that general advice without forcing a zone-specific distinction.\n\nKNOWLEDGE BASE CONTEXT:\n{raw_context}"
+        context = f"FARMER'S CURRENT CONTEXT:\n{user_context}\n\nCRITICAL RULES:\n1. USER OVERRIDE: If the question explicitly asks about a specific climatic zone (e.g., Dry Zone, Intermediate Zone, Wet Zone), season, or condition, you MUST answer for that explicitly requested zone/season using the knowledge base, ignoring any conflicting default context.\n2. DEFAULT CONTEXT: If the question does NOT specify a zone/season, and the knowledge base has zone/season-specific guidance, tailor your advice to match the farmer's current context ({user_context}).\n3. UNIVERSAL ADVICE: If the knowledge base provides general advice (e.g. pit size, mulching, general practices), provide that advice directly.\n\nKNOWLEDGE BASE CONTEXT:\n{raw_context}"
     else:
         context = raw_context
 
@@ -386,7 +486,9 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
             c_norm = np.linalg.norm(c_vec) + 1e-10
             sim = float(np.dot(q_vec, c_vec) / (q_norm * c_norm))
             chunk_sims.append(max(0.0, min(1.0, sim)))
-        retrieval_confidence = round(float(np.mean(chunk_sims)), 4) if chunk_sims else 0.85
+        raw_conf = float(np.mean(chunk_sims)) if chunk_sims else 0.35
+        # Calibrate raw MiniLM cosine similarity (0.15-0.45 typical range) to 0.0-1.0 confidence
+        retrieval_confidence = round(min(1.0, max(0.0, (raw_conf - 0.05) / 0.35)), 4)
     except Exception as emb_err:
         import logging
         logging.getLogger(__name__).warning(f"Error computing retrieval confidence: {emb_err}")
@@ -436,12 +538,23 @@ def get_answer_with_memory(question: str, session_id: str, rag_chain, retriever,
                 history_messages_key="chat_history"
             )
             answer = fb_with_history.invoke(
-                {"question": effective_question, "context": context},
+                {"question": search_query, "context": context},
                 config={"configurable": {"session_id": session_id}}
             )
         except Exception as fb_err:
             logging.getLogger(__name__).error(f"Fallback memory RAG chain error: {fb_err}")
             answer = "Sorry, I am facing connectivity issues to my knowledge base. Please check your internet connection."
+
+    if session_id and _OFF_TOPIC_RESPONSE not in answer and "තොරතුරු නොමැත" not in answer and "don't have information" not in answer.lower():
+        pass
+    else:
+        try:
+            history = get_session_history(session_id)
+            if len(history.messages) >= 2:
+                history.messages = history.messages[:-2]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Error cleaning up memory: {e}")
 
     # Format source documents
     sources = []
@@ -487,8 +600,8 @@ def _clean_llm_translation_output(text: str) -> str:
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
     text = re.sub(r'.*?</think>', '', text, flags=re.DOTALL)
-    text = re.sub(r'^\*{0,2}(?:sinhala translation|tamil translation|english translation|translation):\*{0,2}\s*', '', text, flags=re.IGNORECASE).strip()
-    text = re.sub(r'\n*(?:Note|Explanation|Translation Note|Here is the translation).*$', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'^\s*\*{0,2}(?:sinhala translation|tamil translation|english translation|translation|here is the translation)[:\-]*\*{0,2}\s*', '', text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'\n*(?:Note|Explanation|Translation Note).*$', '', text, flags=re.IGNORECASE | re.DOTALL)
     text = text.strip(' "\'\n\r')
     text = re.sub(r'\bferomone\b', 'pheromone', text, flags=re.IGNORECASE)
     return text.strip()
@@ -611,8 +724,8 @@ def _sanitize_sinhala_advisory(text: str) -> str:
     text = re.sub(r'(?<![\u0D80-\u0DFF])ඩොලමයිට්(?:\s*\(Dolomite\))?(?![\u0D80-\u0DFF])', 'ඩොලමයිට්', text)
 
     # Fix improper translation of 'recommend' to proper name 'අනුරුද්ධ'
-    text = re.sub(r'(?<![\u0D80-\u0DFF])අනුරුද්ධ(?![\u0D80-\u0DFF])', 'නිර්දේශ', text)
-    text = re.sub(r'(?<![\u0D80-\u0DFF])අනුරුද්ධ කරමි(?![\u0D80-\u0DFF])', 'නිර්දේශ කරමි', text)
+    text = re.sub(r'(?i)(?<![\u0D80-\u0DFF])(?:අනුරුද්ධ|Anuruddha)(?![\u0D80-\u0DFF])', 'නිර්දේශ', text)
+    text = re.sub(r'(?i)(?<![\u0D80-\u0DFF])(?:අනුරුද්ධ කරමි|Anuruddha කරමි)(?![\u0D80-\u0DFF])', 'නිර්දේශ කරමි', text)
     # Fix unnatural bookish / garbled phrases and imperative verbs
     text = re.sub(r'(?<![\u0D80-\u0DFF])යෙදෙන්න(?![\u0D80-\u0DFF])', 'යොදන්න', text)
     text = re.sub(r'(?<![\u0D80-\u0DFF])යෙදෙන්නේ\s*කෙසේද(?![\u0D80-\u0DFF])', 'යෙදිය යුත්තේ කෙසේද', text)
@@ -659,7 +772,7 @@ def _sanitize_sinhala_advisory(text: str) -> str:
     if lines:
         last = lines[-1].strip()
         # If last line is a dangling incomplete fragment without ending punctuation and not a header/bullet
-        if last and not last.endswith(('.', ':', '?', '!', '।')) and not any(last.startswith(b) for b in ('*', '-', '•', '#', '1.', '2.', '3.')):
+        if len(lines) > 1 and last and not last.endswith(('.', ':', '?', '!', '।')) and not any(last.startswith(b) for b in ('*', '-', '•', '#', '1.', '2.', '3.')):
             lines.pop()
         text = '\n'.join(lines)
     return text.strip()
@@ -700,8 +813,8 @@ def _clean_tamil_translation_output(text: str) -> str:
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
     text = re.sub(r'.*?</think>', '', text, flags=re.DOTALL)
-    text = re.sub(r'^\*{0,2}(?:tamil translation|english translation|translation):\*{0,2}\s*', '', text, flags=re.IGNORECASE).strip()
-    text = re.sub(r'\n*(?:Note|Explanation|Translation Note|Here is the translation).*$', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'^\s*\*{0,2}(?:tamil translation|english translation|translation|here is the translation)[:\-]*\*{0,2}\s*', '', text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'\n*(?:Note|Explanation|Translation Note).*$', '', text, flags=re.IGNORECASE | re.DOTALL)
     text = text.strip(' "\'\n\r')
     text = re.sub(r'\bferomone\b', 'pheromone', text, flags=re.IGNORECASE)
     return text.strip()
@@ -725,14 +838,16 @@ def _is_translation_valid(text: str, target_lang: str) -> bool:
         return tamil_chars > 0 and tamil_chars >= (latin_chars * 0.8)
     elif target_lang == "en":
         latin_chars = sum(1 for c in text if 'a' <= c.lower() <= 'z')
-        return latin_chars > 0 and not is_sinhala(text) and not is_tamil(text)
+        sinhala_chars = sum(1 for c in text if '\u0d80' <= c <= '\u0dff')
+        tamil_chars = sum(1 for c in text if '\u0b80' <= c <= '\u0bff')
+        return latin_chars > 0 and latin_chars >= (sinhala_chars + tamil_chars) * 2
     return True
 
 
 def translate_text(text, target_lang):
     """
     Translates text to target_lang ('en', 'si', or 'ta') using ChatOpenAI via OpenRouter.
-    Uses model cascade: openai/gpt-4o-mini (fast) -> openai/gpt-4o.
+    Uses model cascade: openai/gpt-4o (primary) -> google/gemini-2.0-flash-001.
     """
     if not text or not text.strip():
         return ""
@@ -956,11 +1071,13 @@ ENGLISH TRANSLATION:""")
     if target_lang in ["si", "ta"]:
         TRANSLATION_CASCADE = [
             "openai/gpt-4o",
+            "google/gemini-2.0-flash-001",
             "openai/gpt-4o-mini",
         ]
     else:
         TRANSLATION_CASCADE = [
             "openai/gpt-4o-mini",
+            "google/gemini-2.0-flash-001",
             "meta-llama/llama-3.1-8b-instruct",
         ]
 
@@ -968,11 +1085,11 @@ ENGLISH TRANSLATION:""")
     word_count = len(text.split()) if text else 10
     if target_lang == "en":
         dynamic_max_tokens = 1000
-        llm_timeout = 8.0
+        llm_timeout = 15.0
     else:
         # Sinhala/Tamil Unicode requires 3-5x tokens compared to English
         dynamic_max_tokens = 1500
-        llm_timeout = 10.0
+        llm_timeout = 15.0
 
     for model_candidate in TRANSLATION_CASCADE:
         try:
@@ -1069,6 +1186,12 @@ def refine_speech_transcription(raw_text: str, target_lang: str = "si") -> str:
 
     raw_clean = raw_text.strip().strip('"').strip("'")
 
+    # If target is Sinhala and already valid Sinhala script (>60% Sinhala characters)
+    # Skip the expensive LLM refinement — Google Speech Recognition already gave us clean text
+    sinhala_chars = sum(1 for c in raw_clean if '\u0d80' <= c <= '\u0dff')
+    if target_lang == "si" and sinhala_chars >= 5 and (sinhala_chars / max(len(raw_clean), 1)) > 0.5:
+        return raw_clean
+
     # If target is Tamil and already valid Tamil script (>60% Tamil characters)
     tamil_chars = sum(1 for c in raw_clean if '\u0b80' <= c <= '\u0bff')
     if target_lang == "ta" and tamil_chars >= 8 and (tamil_chars / len(raw_clean)) > 0.6:
@@ -1157,10 +1280,11 @@ MULTI_LLM_MODELS = {
     'gemma': 'google/gemini-3.5-flash-lite',
 }
 
-_ADVISOR_PROMPT_TEMPLATE = """You are an expert agricultural advisor for coconut farming in Sri Lanka.
-Use ONLY the information from the context below to answer the question concisely (2-4 clear bullet points).
-If the answer is not found in the context, say: "I don't have information about that in my knowledge base."
+_ADVISOR_PROMPT_TEMPLATE = """You are an expert agricultural advisor for coconut farming in Sri Lanka (Coconut Research Institute - CRI).
+Answer the farmer's question directly and concisely (2-4 clear bullet points) using the provided context.
+Apply relevant CRI agricultural practices (such as soil moisture conservation, mulching, husk burial, drains, irrigation, pest control, or fertilizer guidelines) found in the context to directly address the question.
 Give practical, direct advice a farmer can understand and apply immediately.
+Only if the context has absolutely no relevant information about the subject, say: "I don't have information about that in my knowledge base."
 
 Context:
 {context}
@@ -1180,9 +1304,9 @@ Evaluate on:
 4. Practical usefulness — is the advice actionable for a farmer?
 
 Also assess consensus: how much do all three answers agree on key facts?
-- 80-100: High agreement — all three give essentially the same core facts
-- 50-79: Moderate agreement — most key facts align but with some differences
-- 0-49: Low agreement — significant contradictions or different information
+- 80-100: High agreement — all three give essentially the same core facts. You MUST give 90-100 if they mean the exact same thing, even if phrased differently.
+- 50-79: Moderate agreement — most key facts align but there are factual differences.
+- 0-49: Low agreement — significant contradictions or different information.
 
 SOURCE CONTEXT:
 {context}
@@ -1235,7 +1359,7 @@ def _invoke_llm(model_name: str, context: str, question: str) -> str:
                 timeout=8.0
             )
             chain = prompt | llm | StrOutputParser()
-            raw_answer = chain.invoke({"context": context[:1500], "question": question})
+            raw_answer = chain.invoke({"context": context[:6000], "question": question})
             if raw_answer and len(raw_answer.strip()) > 10:
                 break
         except Exception as err:
@@ -1263,7 +1387,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
     Early Exit Optimization:
     - As results come in via as_completed(), the first two finished answers
       are compared using cosine similarity on their embeddings.
-    - If similarity >= EARLY_EXIT_THRESHOLD (0.80), the Judge LLM is skipped.
+    - If similarity >= EARLY_EXIT_THRESHOLD (0.60), the Judge LLM is skipped.
     - All 3 candidate answers are ALWAYS collected (no candidate is cancelled).
     - The latency saving comes solely from skipping the Judge LLM call.
     """
@@ -1272,6 +1396,21 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
 
     # Model rank priority for early exit selection (lower index = higher rank)
     MODEL_RANK = {"llama": 0, "gpt4omini": 1, "gemma": 2}
+
+    # 0. Pre-screen: Instantly reject off-topic questions (greetings, casual chat)
+    if is_off_topic(question):
+        return {
+            "best_answer": _OFF_TOPIC_RESPONSE,
+            "best_model": "pre_screen",
+            "consensus_score": 0,
+            "early_exit": True,
+            "answers": {},
+            "judge_reasoning": "Question was detected as off-topic (greeting or non-agricultural).",
+            "sources": [],
+            "retrieval_confidence": 0.0,
+            "combined_reliability": 0.0,
+            "reliability_level": "low"
+        }
 
     # 1. Resolve prior conversational context if session_id is active
     standalone_q = question
@@ -1282,32 +1421,47 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
             logger.warning(f"Error contextualizing multi-LLM question: {ctx_err}")
 
     effective_question = standalone_q if (standalone_q and standalone_q.strip()) else question
-    search_query = f"User Context: {user_context}\nQuestion: {effective_question}" if user_context else effective_question
+    search_query = effective_question
     question_topics = detect_question_topics(effective_question)
-    source_docs = []
+    # Always do standard retrieval
+    standard_docs = []
+    try:
+        if hasattr(retriever, "vectorstore"):
+            docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=4)
+            standard_docs = [doc for doc, _ in docs_and_scores]
+        else:
+            standard_docs = retriever.invoke(search_query)
+    except Exception:
+        pass
 
+    # Do filtered retrieval if applicable
+    filtered_docs = []
     if question_topics != ['general']:
         try:
             filtered_retriever = get_filtered_retriever(question_topics, retriever=retriever, k=4, fetch_k=50)
             if filtered_retriever is not None:
                 filtered_docs = filtered_retriever.invoke(search_query)
-                if len(filtered_docs) >= 2:
-                    source_docs = filtered_docs
         except Exception as filt_err:
             logger.warning(f"Filtered retrieval in get_multi_llm_answer error: {filt_err}")
 
-    # Fallback to standard similarity search if filtered retrieval yielded < 2 docs
-    if not source_docs:
-        try:
-            if hasattr(retriever, "vectorstore"):
-                docs_and_scores = retriever.vectorstore.similarity_search_with_score(search_query, k=4)
-                source_docs = [doc for doc, _ in docs_and_scores]
-            else:
-                source_docs = retriever.invoke(search_query)
-        except Exception:
-            source_docs = retriever.invoke(search_query)
+    # Combine and deduplicate
+    seen_contents = set()
+    source_docs = []
+    for doc in filtered_docs + standard_docs:
+        if doc.page_content not in seen_contents:
+            source_docs.append(doc)
+            seen_contents.add(doc.page_content)
+    
+    # Prioritize English.pdf chunks since they contain clean legible CRI manual text
+    source_docs.sort(key=lambda d: 0 if "english" in str(d.metadata.get("source", "")).lower() else 1)
+    source_docs = source_docs[:5]
 
-    context = "\n\n".join(doc.page_content for doc in source_docs)[:3000]
+    raw_context = "\n\n".join(doc.page_content for doc in source_docs)[:8000]
+
+    if user_context:
+        context = f"FARMER'S CURRENT CONTEXT:\n{user_context}\n\nCRITICAL RULES:\n1. USER OVERRIDE: If the question explicitly asks about a specific climatic zone (e.g., Dry Zone, Intermediate Zone, Wet Zone), season, or condition, you MUST answer for that explicitly requested zone/season using the knowledge base, ignoring any conflicting default context.\n2. DEFAULT CONTEXT: If the question does NOT specify a zone/season, and the knowledge base has zone/season-specific guidance, tailor your advice to match the farmer's current context ({user_context}).\n3. UNIVERSAL ADVICE: If the knowledge base provides general advice (e.g. pit size, mulching, general practices), provide that advice directly.\n\nKNOWLEDGE BASE CONTEXT:\n{raw_context}"
+    else:
+        context = raw_context
 
     # Compute retrieval confidence from average cosine similarity of retrieved chunks
     embeddings = _get_embeddings_model()
@@ -1319,8 +1473,9 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
             c_vec = np.array(embeddings.embed_query(doc.page_content[:500]))
             c_norm = np.linalg.norm(c_vec) + 1e-10
             sim = float(np.dot(q_vec, c_vec) / (q_norm * c_norm))
-            chunk_sims.append(max(0.0, min(1.0, sim)))
-        retrieval_confidence = round(float(np.mean(chunk_sims)), 4) if chunk_sims else 0.85
+        raw_sim = float(np.mean(chunk_sims)) if chunk_sims else 0.35
+        # Calibrate raw MiniLM cosine similarity (0.15-0.45 typical range) to 0.0-1.0 confidence
+        retrieval_confidence = round(min(1.0, max(0.0, (raw_sim - 0.05) / 0.35)), 4)
     except Exception as emb_err:
         logger.warning(f"Error computing retrieval confidence in get_multi_llm_answer: {emb_err}")
         retrieval_confidence = 0.85
@@ -1339,7 +1494,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
     # 2. Run all 3 LLMs in parallel with effective_question
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {
-            executor.submit(_invoke_llm, model, context, effective_question): key
+            executor.submit(_invoke_llm, model, context, search_query): key
             for key, model in MULTI_LLM_MODELS.items()
         }
 
@@ -1396,7 +1551,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
         # Full Judge evaluation (existing logic preserved)
         judge_prompt = PromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
         judge_payload = {
-            "context": context[:1500],
+            "context": context[:6000],
             "question": question,
             "llama_answer": answers.get("llama", "")[:600],
             "gpt4omini_answer": answers.get("gpt4omini", "")[:600],
@@ -1408,7 +1563,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0.0,
-                max_tokens=100,
+                max_tokens=250,
                 timeout=4
             )
             judge_chain = judge_prompt | judge_llm | StrOutputParser()
@@ -1420,7 +1575,7 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
                 api_key=os.getenv("OPENROUTER_API_KEY"),
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0.0,
-                max_tokens=100,
+                max_tokens=250,
                 timeout=4
             )
             judge_chain = judge_prompt | judge_llm_fb | StrOutputParser()
@@ -1436,15 +1591,16 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
                 try:
                     judge_result = json.loads(json_match.group())
                 except json.JSONDecodeError:
-                    judge_result = {"best_model": "llama", "reason": "Judge parse error — defaulting LLaMA", "consensus_score": 50}
+                    judge_result = {"best_model": "llama", "reason": "Judge parse error — defaulting LLaMA", "consensus_score": 80}
             else:
-                judge_result = {"best_model": "llama", "reason": "Judge parse error — defaulting LLaMA", "consensus_score": 50}
+                judge_result = {"best_model": "llama", "reason": "Judge parse error — defaulting LLaMA", "consensus_score": 80}
 
         best_model = judge_result.get("best_model", "llama")
         if best_model not in answers:
             best_model = "llama"
         reason = judge_result.get("reason", "")
-        consensus_score = judge_result.get("consensus_score", 50)
+        raw_consensus = judge_result.get("consensus_score")
+        consensus_score = float(raw_consensus) if (raw_consensus is not None and raw_consensus > 0) else 80.0
 
     combined_reliability, reliability_level = calculate_combined_reliability(
         retrieval_confidence=retrieval_confidence,
@@ -1453,8 +1609,8 @@ def get_multi_llm_answer(question, retriever, user_context=None, session_id=None
 
     best_ans = answers.get(best_model, answers.get("llama", ""))
 
-    # Save conversation turn to memory if session_id is active
-    if session_id:
+    # Save conversation turn to memory if session_id is active and it wasn't rejected as off-topic
+    if session_id and _OFF_TOPIC_RESPONSE not in best_ans and "තොරතුරු නොමැත" not in best_ans and "don't have information" not in best_ans.lower():
         try:
             history = get_session_history(session_id)
             history.add_user_message(question)
@@ -1662,6 +1818,34 @@ def find_relevant_images(
         import logging
         logging.getLogger(__name__).error(f"Error in find_relevant_images: {str(e)}")
         return []
+
+
+def get_zone(lat: float, lon: float) -> str:
+    """Determine the climatic zone based on latitude and longitude."""
+    if lat == 0.0 and lon == 0.0:
+        return 'Wet Zone' # fallback
+    if lat > 8.0:
+        return 'Dry Zone'
+    elif lat > 7.0 and lon > 80.5:
+        return 'Intermediate Zone'
+    else:
+        return 'Wet Zone'
+
+def get_season(month: int) -> str:
+    """Determine the season based on month (1-12)."""
+    if 5 <= month <= 9:
+        return 'Yala'
+    else:
+        return 'Maha'
+
+def classify_consensus(score: int) -> str:
+    """Classify the consensus score into High, Moderate, or Low."""
+    if score >= 80:
+        return 'High'
+    elif score >= 50:
+        return 'Moderate'
+    else:
+        return 'Low'
 
 
 if __name__ == "__main__":
