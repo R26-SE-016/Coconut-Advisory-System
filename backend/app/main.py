@@ -23,7 +23,12 @@ import uuid
 # Import RAG engine
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from step2_rag_engine import load_rag_chain, get_answer, get_answer_with_memory, translate_text, get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images, get_language, is_sinhala, is_tamil, calculate_combined_reliability, refine_speech_transcription
+from step2_rag_engine import (
+    load_rag_chain, get_answer, get_answer_with_memory, translate_text,
+    get_multi_llm_answer, translate_multi_llm_payload, find_relevant_images,
+    get_language, is_sinhala, is_tamil, calculate_combined_reliability,
+    refine_speech_transcription, is_off_topic, _OFF_TOPIC_RESPONSE
+)
 
 # Load environment variables
 load_dotenv()
@@ -281,6 +286,34 @@ async def ask_question(request: QuestionRequest, background_tasks: BackgroundTas
         # Detect input language using unified detection
         detected_lang = get_language(question)
         
+        # Pre-screen: Instantly reject off-topic questions in ANY language
+        # This runs BEFORE translation to save API costs
+        from step2_rag_engine import is_off_topic, _OFF_TOPIC_RESPONSE
+        if is_off_topic(question):
+            logger.info(f"Off-topic question detected: '{question[:50]}'. Returning rejection.")
+            target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
+            off_topic_answer = _OFF_TOPIC_RESPONSE
+            if target_lang in ("si", "ta"):
+                try:
+                    off_topic_answer = await asyncio.to_thread(translate_text, _OFF_TOPIC_RESPONSE, target_lang)
+                except Exception:
+                    pass
+            season = _determine_season()
+            return AnswerResponse(
+                success=True,
+                question=question,
+                answer=off_topic_answer,
+                sources=[],
+                images=[],
+                zone=request.context.split("|")[0].strip() if request.context and "|" in request.context else "Wet Zone",
+                season=season,
+                month=_get_month_name(),
+                session_id=session_id,
+                retrieval_confidence=0.0,
+                combined_reliability=0.0,
+                reliability_level="low"
+            )
+        
         # Translate question to English if it is in Sinhala or Tamil
         rag_question = question
         if detected_lang in ('si', 'ta'):
@@ -482,6 +515,39 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
         # Detect input language using unified detection
         detected_lang = get_language(question)
 
+        # Pre-screen: Instantly reject off-topic questions in ANY language
+        if is_off_topic(question):
+            logger.info(f"Off-topic question detected in /ask-multi: '{question[:50]}'. Returning rejection.")
+            target_lang = user_lang if user_lang in ("si", "ta") else (detected_lang if detected_lang in ("si", "ta") else "en")
+            off_topic_answer = _OFF_TOPIC_RESPONSE
+            if target_lang in ("si", "ta"):
+                try:
+                    off_topic_answer = await asyncio.to_thread(translate_text, _OFF_TOPIC_RESPONSE, target_lang)
+                except Exception:
+                    pass
+            season = _determine_season()
+            return MultiLLMResponse(
+                success=True,
+                best_answer=off_topic_answer,
+                best_model="pre_screen",
+                reason="Question was detected as off-topic (greeting or non-agricultural).",
+                consensus_score=0,
+                sources=[],
+                images=[],
+                zone=request.context.split("|")[0].strip() if request.context and "|" in request.context else "Wet Zone",
+                season=season,
+                llama_answer="",
+                gpt4omini_answer="",
+                gemma_answer="",
+                qwen_answer="",
+                early_exit=True,
+                similarity_score=None,
+                latency_ms=0,
+                retrieval_confidence=0.0,
+                combined_reliability=0.0,
+                reliability_level="low"
+            )
+
         # Pre-translate query to English if Sinhala or Tamil
         rag_question = question
         if detected_lang in ('si', 'ta'):
@@ -598,7 +664,7 @@ async def ask_multi_llm(request: MultiLLMRequest, background_tasks: BackgroundTa
             )
 
         # Pre-warm TTS cache in background for instant audio playback
-        if best_answer and best_answer.strip():
+        if background_tasks and best_answer and best_answer.strip():
             background_tasks.add_task(prewarm_tts_cache, best_answer, user_lang)
 
         return MultiLLMResponse(
