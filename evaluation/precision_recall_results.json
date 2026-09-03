@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-31T07:35:50.421440+00:00",
+  "timestamp": "2026-09-01T05:19:00.494603+00:00",
   "evaluation_name": "SaruPol RAG Retrieval Evaluation (Semantic Relevance Scoring)",
   "configuration": {
     "evaluation_method": "Semantic Relevance Judgement (Cosine Similarity)",
