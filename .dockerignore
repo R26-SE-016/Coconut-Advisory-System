@@ -1,0 +1,15 @@
+.git/
+.github/
+backend/venv/
+frontend/node_modules/
+SaruPol-Apk/node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+backend/.env
+*.log
+.pytest_cache/
+evaluation/__pycache__/
+.qodo/
