@@ -4,11 +4,11 @@ services:
   # FastAPI Backend
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: coconut_advisory_backend
     ports:
-      - "5002:5002"
+      - "5002:8000"
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=5002
@@ -19,10 +19,11 @@ services:
     volumes:
       - ./knowledge_base:/app/knowledge_base:ro
       - ./faiss_index:/app/faiss_index:ro
+      - ./image_index:/app/image_index:ro
     networks:
       - coconut_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -8,13 +8,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app/ ./app/
+COPY backend/app/ ./app/
+COPY faiss_index/ ./faiss_index/
+COPY image_index/ ./image_index/
+COPY knowledge_base/ ./knowledge_base/
+COPY step2_rag_engine.py .
+COPY backend/static/ ./static/
 
 # Create symlink for relative imports to work
 RUN mkdir -p /app && touch /app/__init__.py
